@@ -124,6 +124,7 @@ export default function ScrollSequenceHero() {
       const dw = iw * scale
       const dh = ih * scale
       ctx.drawImage(img, (cssW - dw) / 2, (cssH - dh) / 2, dw, dh)
+      canvas.dataset.frame = String(i + 1)
     }
 
     // ---------- scroll -> frame ----------
