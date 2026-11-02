@@ -12,7 +12,7 @@ Marketing site for The Ayo Place event venue. React + Vite + Tailwind.
 ## What is here so far
 
 - `src/components/ScrollSequenceHero.jsx` — full-screen, scroll-scrubbed hero.
-  300 JPEG frames in `public/frames/` are drawn to a canvas; the frame shown is
+  240 frames in `public/frames/`, every native frame of the 10 s, 24 fps walkthrough video, stored as AVIF with a JPEG fallback for browsers that cannot decode AVIF. They are drawn to a canvas; the frame shown is
   driven by scroll position, so scrolling down plays the walkthrough forward and
   scrolling up plays it in reverse. The canvas stays sticky until the last frame,
   then the page scrolls on normally. The hero copy and call-to-action fade out
@@ -26,4 +26,4 @@ Constants at the top of `ScrollSequenceHero.jsx`:
 - `SCROLL_VH_DESKTOP` / `SCROLL_VH_MOBILE` — how many viewport heights of scroll
   the sequence spans (higher = slower, more controlled playback).
 - `TEXT_FADE_END` — fraction of the sequence over which the copy fades away.
-- `FRAME_COUNT` — number of frames in `public/frames/` (named `frame-001.jpg` …).
+- `FRAME_COUNT` — number of frames in `public/frames/` (named `frame-001.avif` / `frame-001.jpg` …).

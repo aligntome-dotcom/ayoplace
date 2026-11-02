@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import './ScrollSequenceHero.css'
 
-const FRAME_COUNT = 300
+const FRAME_COUNT = 240
 // Fraction of the sequence over which the hero copy fades and recedes.
 // 0.14 is roughly the first 60vh of scrolling on desktop.
 const TEXT_FADE_END = 0.14
@@ -9,8 +9,11 @@ const TEXT_FADE_END = 0.14
 const SCROLL_VH_DESKTOP = 4.5
 const SCROLL_VH_MOBILE = 3.5
 
+// AVIF is ~30% smaller than the JPEG set. The first frame is requested as
+// AVIF; if the browser cannot decode it we fall back to the JPEG set.
+let frameExt = 'avif'
 const framePath = (i) =>
-  `${import.meta.env.BASE_URL}frames/frame-${String(i + 1).padStart(3, '0')}.jpg`
+  `${import.meta.env.BASE_URL}frames/frame-${String(i + 1).padStart(3, '0')}.${frameExt}`
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3)
@@ -48,9 +51,9 @@ export default function ScrollSequenceHero() {
             loaded[i] = true
             dirty = true
           }
-          resolve()
+          resolve(true)
         }
-        img.onerror = () => resolve()
+        img.onerror = () => resolve(false)
         img.src = framePath(i)
       })
 
@@ -58,7 +61,11 @@ export default function ScrollSequenceHero() {
     // A coarse pass (every 10th frame) comes first so early scrubbing shows
     // approximately the right picture, then the gaps are filled in.
     const loadAll = async () => {
-      await loadFrame(0)
+      const avifOk = await loadFrame(0)
+      if (!avifOk && !cancelled) {
+        frameExt = 'jpg'
+        await loadFrame(0)
+      }
       const seen = new Set([0])
       const order = []
       for (const step of [10, 5, 2, 1]) {
