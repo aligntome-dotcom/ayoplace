@@ -1,0 +1,130 @@
+.ayo-hero {
+  position: relative;
+  /* Total scroll distance that drives the sequence. */
+  height: calc(var(--scroll-vh-mobile, 3.5) * 100vh);
+  height: calc(var(--scroll-vh-mobile, 3.5) * 100svh);
+  background: #0f0f0f;
+}
+
+@media (min-width: 768px) {
+  .ayo-hero {
+    height: calc(var(--scroll-vh-desktop, 4.5) * 100vh);
+    height: calc(var(--scroll-vh-desktop, 4.5) * 100svh);
+  }
+}
+
+.ayo-hero__sticky {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100svh;
+  width: 100%;
+  overflow: hidden;
+  background: #0f0f0f;
+}
+
+.ayo-hero__canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.ayo-hero__shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 50% 45%, rgba(0, 0, 0, 0.16) 0%, rgba(0, 0, 0, 0.38) 60%, rgba(0, 0, 0, 0.55) 100%),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0) 35%, rgba(0, 0, 0, 0.3) 100%);
+}
+
+.ayo-hero__stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0 clamp(20px, 6vw, 64px);
+  perspective: 900px;
+  perspective-origin: 50% 50%;
+}
+
+.ayo-hero__copy {
+  max-width: 44rem;
+  text-align: center;
+  color: #fff;
+  will-change: transform, opacity, filter;
+  transform-style: preserve-3d;
+  transform: translate3d(0, 0, 0);
+  /* Everything is set per frame from JS; a transition would fight it. */
+  transition: none;
+}
+
+.ayo-hero__title {
+  margin: 0;
+  font-size: clamp(2rem, 5.2vw, 4.25rem);
+  line-height: 1.05;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
+}
+
+.ayo-hero__lede {
+  margin: 1.1rem auto 0;
+  max-width: 34rem;
+  font-size: clamp(0.95rem, 1.3vw, 1.125rem);
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.82);
+  text-wrap: pretty;
+}
+
+.ayo-hero__cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1.75rem;
+  padding: 0.85rem 1.6rem;
+  border-radius: 999px;
+  background: rgba(15, 15, 15, 0.82);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background-color 180ms ease, color 180ms ease, transform 180ms ease, border-color 180ms ease;
+}
+
+.ayo-hero__cta:hover {
+  background: #fff;
+  color: #0f0f0f;
+  border-color: #fff;
+  transform: translateY(-1px);
+}
+
+.ayo-hero__cta:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+
+.ayo-hero__progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.ayo-hero__progress span {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.85);
+  transform-origin: left center;
+  transform: scaleX(0);
+}
