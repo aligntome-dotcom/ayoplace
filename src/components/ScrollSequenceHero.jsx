@@ -6,8 +6,10 @@ const FRAME_COUNT = 239
 // 0.14 is roughly the first 60vh of scrolling on desktop.
 const TEXT_FADE_END = 0.14
 // Scroll distance that drives the whole sequence, in viewport heights.
-const SCROLL_VH_DESKTOP = 4.5
-const SCROLL_VH_MOBILE = 3.5
+// Longer is calmer: the same wheel speed advances fewer frames per second,
+// which keeps the decoder ahead of the scroll on modest hardware.
+const SCROLL_VH_DESKTOP = 5.5
+const SCROLL_VH_MOBILE = 4
 
 // Frames are 1920x1080 JPEG (~19 MB for the set). JPEG rather than AVIF
 // because decode speed is what limits scrubbing: a 1080p JPEG decodes 2-3x
@@ -24,8 +26,9 @@ const SCROLL_VH_MOBILE = 3.5
 //     fast scrub always has a nearby picture while the window catches up.
 const KEY_STEP = 8
 // Concurrent decodes: enough to use spare cores, never so many that the
-// main thread starves (three on a 4-thread machine measured best).
-const MAX_DECODES = Math.max(2, Math.min(4, Math.floor((navigator.hardwareConcurrency || 4) * 0.75)))
+// main thread starves: one decoder per physical core, assuming two threads
+// per core, so the UI thread and compositor keep a core to themselves.
+const MAX_DECODES = Math.max(2, Math.min(4, Math.floor((navigator.hardwareConcurrency || 4) / 2)))
 // Memory for the full-size window. Decoded 1080p RGBA is ~8 MB per frame.
 const LOW_MEMORY = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 4
 const DECODE_BUDGET_BYTES = (LOW_MEMORY ? 64 : 128) * 1024 * 1024
@@ -257,7 +260,7 @@ export default function ScrollSequenceHero() {
     // nearest half-size keyframe, or failing that anything at all.
     const pick = (t) => {
       if (full[t]) return [full[t], t, true]
-      for (let d = 1; d <= 2; d++) {
+      for (let d = 1; d <= 3; d++) {
         if (t - d >= 0 && full[t - d]) return [full[t - d], t - d, true]
         if (t + d < FRAME_COUNT && full[t + d]) return [full[t + d], t + d, true]
       }
@@ -323,10 +326,11 @@ export default function ScrollSequenceHero() {
       const p = getProgress()
       const target = p * (FRAME_COUNT - 1)
 
-      // Light smoothing so mouse-wheel steps do not jump several frames at
-      // once, but tight enough that it settles instantly when scrolling stops.
+      // Smoothing spreads each mouse-wheel step over several animation frames
+      // so playback advances one frame at a time instead of jumping, and the
+      // decoder sees a steadier demand. Settles within ~250 ms of stopping.
       const delta = target - current
-      current = Math.abs(delta) < 0.05 ? target : current + delta * 0.35
+      current = Math.abs(delta) < 0.05 ? target : current + delta * 0.2
 
       applyCopy(p)
       if (bar) bar.style.transform = `scaleX(${p})`

@@ -33,8 +33,7 @@
   display: block;
   width: 100%;
   height: 100%;
-  /* Gentle pop; the heavy lifting is done by pre-sharpened frames. */
-  filter: contrast(1.05) saturate(1.05);
+  /* Colour grade is baked into the frames; no per-frame filter pass here. */
 }
 
 .ayo-hero__shade {
