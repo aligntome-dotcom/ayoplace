@@ -1,21 +1,28 @@
 import 'server-only'
 
 import { getXanoBaseUrl, type EnvSource } from '../server/env'
+import { isWellFormedToken } from '../auth/token'
 import { XANO_API_GROUPS, type XanoApiGroup } from './groups'
+
+export { isWellFormedToken }
 
 /**
  * Server-only HTTP client for the Xano backend.
  *
- * - Builds every URL from the validated XANO_BASE_URL and a verified API group.
+ * - Builds every URL from the validated XANO_BASE_URL and a verified API group,
+ *   and checks after parsing that the URL is still inside that group.
  * - Sends and receives JSON; attaches a Bearer token when one is supplied.
  * - Never retries, never follows redirects (a redirect would carry the
  *   Authorization header elsewhere), never logs.
+ * - One timeout covers the whole exchange, headers and body.
  * - Returns a discriminated result instead of throwing for backend responses,
  *   and throws only for programming or configuration errors.
  *
  * Errors come in two layers: XanoError carries the internal detail (HTTP
  * status, backend message, cause) for server-side decisions, and
- * XanoError.toSafe() produces the only shape that may reach a browser.
+ * XanoError.toSafe() produces the only shape that may reach a browser. The
+ * internal fields are non-enumerable and toJSON() returns the safe shape, so
+ * serialising an error, or a result that contains one, cannot leak them.
  */
 
 export type XanoMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
@@ -48,16 +55,17 @@ const SAFE_MESSAGES: Record<SafeErrorCode, string> = {
 }
 
 export class XanoError extends Error {
-  override readonly name = 'XanoError'
-  readonly kind: XanoErrorKind
-  /** HTTP status for kind 'http'. */
-  readonly status?: number
+  // Declared only: the values are installed as non-enumerable properties in
+  // the constructor so that JSON.stringify and object spread never see them.
+  declare readonly kind: XanoErrorKind
+  /** HTTP status for kind 'http'. Server-side use only. */
+  declare readonly status?: number
   /**
    * The backend's own `message` field, when the response carried one.
    * Server-side use only (for example to distinguish backend outcomes);
-   * it is never included in message, toString() or toSafe().
+   * it is never included in message, toString(), toJSON() or toSafe().
    */
-  readonly backendMessage?: string
+  declare readonly backendMessage?: string
 
   constructor(
     kind: XanoErrorKind,
@@ -65,9 +73,13 @@ export class XanoError extends Error {
     options: { status?: number; backendMessage?: string; cause?: unknown } = {},
   ) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause })
-    this.kind = kind
-    if (options.status !== undefined) this.status = options.status
-    if (options.backendMessage !== undefined) this.backendMessage = options.backendMessage
+    const hidden = (value: unknown) => ({ value, enumerable: false, writable: false, configurable: false })
+    Object.defineProperty(this, 'name', hidden('XanoError'))
+    Object.defineProperty(this, 'kind', hidden(kind))
+    if (options.status !== undefined) Object.defineProperty(this, 'status', hidden(options.status))
+    if (options.backendMessage !== undefined) {
+      Object.defineProperty(this, 'backendMessage', hidden(options.backendMessage))
+    }
   }
 
   get safeCode(): SafeErrorCode {
@@ -94,6 +106,11 @@ export class XanoError extends Error {
     const code = this.safeCode
     return { code, message: SAFE_MESSAGES[code] }
   }
+
+  /** JSON.stringify always produces the safe shape, never the internals. */
+  toJSON(): SafeError {
+    return this.toSafe()
+  }
 }
 
 export type XanoResult<T> = { ok: true; status: number; data: T } | { ok: false; error: XanoError }
@@ -109,7 +126,7 @@ export interface XanoRequest {
   query?: Record<string, string | number | boolean | undefined>
   /** Bearer token for authenticated endpoints. */
   token?: string
-  /** Request timeout in milliseconds (default 10 000). */
+  /** Timeout in milliseconds for the whole exchange, headers and body (default 10 000). */
   timeoutMs?: number
 }
 
@@ -122,9 +139,21 @@ export interface XanoClientOptions {
 
 export const DEFAULT_TIMEOUT_MS = 10_000
 
-const TOKEN_PATTERN = /^[A-Za-z0-9._~+/=-]+$/
+// Percent-encoded '.', '/' and '\' have no place in an endpoint path: the URL
+// parser would turn encoded dots into traversal segments, and encoded
+// separators only exist to confuse routers.
+const ENCODED_SEPARATOR = /%(2e|2f|5c)/i
+// Query, fragment, whitespace, C0 controls (including NUL) and DEL.
+const FORBIDDEN_PATH_CHARS = /[?#\s\u0000-\u001f\u007f]/
 
-/** Builds the absolute request URL from the base origin, group and path. */
+/**
+ * Builds the absolute request URL from the base origin, group and path.
+ *
+ * Input checks reject the obvious forms, then the parsed URL is checked again:
+ * it must still be on the base origin and its pathname must still start with
+ * the group path. That post-condition is what guarantees the request cannot
+ * leave the group, whatever the parser normalised.
+ */
 export function buildXanoUrl(
   base: URL,
   group: XanoApiGroup,
@@ -134,16 +163,25 @@ export function buildXanoUrl(
   if (typeof path !== 'string' || !path.startsWith('/')) {
     throw new Error('Xano request path must start with "/"')
   }
-  if (path.includes('..') || path.includes('://') || path.startsWith('//')) {
+  if (path.includes('..') || path.includes('://') || path.startsWith('//') || path.includes('\\')) {
     throw new Error('Xano request path must be a plain path within the API group')
   }
-  if (/[?#\s]/.test(path)) {
-    throw new Error('Xano request path must not contain a query, fragment or whitespace')
+  if (FORBIDDEN_PATH_CHARS.test(path)) {
+    throw new Error('Xano request path must not contain a query, fragment, whitespace or control characters')
+  }
+  if (ENCODED_SEPARATOR.test(path)) {
+    throw new Error('Xano request path must not contain percent-encoded dots or separators')
   }
   const groupPath = XANO_API_GROUPS[group]
   if (!groupPath) throw new Error('Unknown Xano API group')
 
   const url = new URL(`${groupPath}${path}`, base.origin)
+
+  // Post-condition on the normalised URL: same origin, still inside the group.
+  if (url.origin !== base.origin || url.pathname !== `${groupPath}${path}` || !url.pathname.startsWith(`${groupPath}/`)) {
+    throw new Error('Xano request path escaped the API group after URL normalisation')
+  }
+
   if (query) {
     for (const [key, value] of Object.entries(query)) {
       if (value !== undefined) url.searchParams.set(key, String(value))
@@ -166,17 +204,13 @@ export function buildXanoHeaders(options: { token?: string; hasBody: boolean }):
   return headers
 }
 
-export function isWellFormedToken(token: unknown): token is string {
-  return typeof token === 'string' && token.length > 0 && token.length <= 4096 && TOKEN_PATTERN.test(token)
-}
-
-async function readBody(response: Response): Promise<{ text: string; json: unknown; parsed: boolean }> {
+async function readBody(response: Response): Promise<{ json: unknown; parsed: boolean }> {
   const text = await response.text()
-  if (text.trim() === '') return { text, json: null, parsed: true }
+  if (text.trim() === '') return { json: null, parsed: true }
   try {
-    return { text, json: JSON.parse(text) as unknown, parsed: true }
+    return { json: JSON.parse(text) as unknown, parsed: true }
   } catch {
-    return { text, json: null, parsed: false }
+    return { json: null, parsed: false }
   }
 }
 
@@ -186,6 +220,11 @@ function backendMessageOf(json: unknown): string | undefined {
     if (typeof m === 'string') return m
   }
   return undefined
+}
+
+function transportFailure(aborted: boolean, timeoutMs: number, cause: unknown): XanoError {
+  if (aborted) return new XanoError('timeout', `Xano request timed out after ${timeoutMs} ms`)
+  return new XanoError('network', 'Xano could not be reached', { cause })
 }
 
 /**
@@ -212,42 +251,47 @@ export async function xanoFetch<T = unknown>(
   const timeoutMs = request.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const timer = setTimeout(() => controller.abort(), timeoutMs)
 
-  let response: Response
   try {
-    response = await doFetch(url, {
-      method,
-      headers,
-      body: hasBody ? JSON.stringify(request.body) : undefined,
-      signal: controller.signal,
-      redirect: 'manual',
-      cache: 'no-store',
-    })
-  } catch (cause) {
-    clearTimeout(timer)
-    if (controller.signal.aborted) {
-      return { ok: false, error: new XanoError('timeout', `Xano request timed out after ${timeoutMs} ms`) }
+    let response: Response
+    try {
+      response = await doFetch(url, {
+        method,
+        headers,
+        body: hasBody ? JSON.stringify(request.body) : undefined,
+        signal: controller.signal,
+        redirect: 'manual',
+        cache: 'no-store',
+      })
+    } catch (cause) {
+      return { ok: false, error: transportFailure(controller.signal.aborted, timeoutMs, cause) }
     }
-    return { ok: false, error: new XanoError('network', 'Xano could not be reached', { cause }) }
-  }
-  clearTimeout(timer)
 
-  const { json, parsed } = await readBody(response)
+    // The same deadline covers the body: an abort here is still a timeout.
+    let body: { json: unknown; parsed: boolean }
+    try {
+      body = await readBody(response)
+    } catch (cause) {
+      return { ok: false, error: transportFailure(controller.signal.aborted, timeoutMs, cause) }
+    }
 
-  if (response.status >= 200 && response.status < 300) {
-    if (!parsed) {
-      return {
-        ok: false,
-        error: new XanoError('invalid_response', `Xano returned a non-JSON body with HTTP ${response.status}`),
+    if (response.status >= 200 && response.status < 300) {
+      if (!body.parsed) {
+        return {
+          ok: false,
+          error: new XanoError('invalid_response', `Xano returned a non-JSON body with HTTP ${response.status}`),
+        }
       }
+      return { ok: true, status: response.status, data: body.json as T }
     }
-    return { ok: true, status: response.status, data: json as T }
-  }
 
-  return {
-    ok: false,
-    error: new XanoError('http', `Xano responded with HTTP ${response.status}`, {
-      status: response.status,
-      backendMessage: backendMessageOf(json),
-    }),
+    return {
+      ok: false,
+      error: new XanoError('http', `Xano responded with HTTP ${response.status}`, {
+        status: response.status,
+        backendMessage: backendMessageOf(body.json),
+      }),
+    }
+  } finally {
+    clearTimeout(timer)
   }
 }

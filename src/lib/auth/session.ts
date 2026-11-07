@@ -14,7 +14,12 @@ import { readSessionCookie, type SessionCookieStore } from './cookies'
  * The call to the current-user endpoint is injected as `fetchCurrentUser` so
  * that this module does not hard-code the endpoint or its response shape;
  * the verified binding is added in the integration step that follows, along
- * with response validation. Until then `user` is typed as unknown.
+ * with field-level validation against the verified contract. Until then the
+ * only shape requirement is that a successful answer is a non-empty plain
+ * object: a 2xx with an empty, null, array or primitive body is not an
+ * authenticated session, it is an unexpected answer and is reported as
+ * 'unavailable'.
+ * `user` stays typed as unknown so callers must validate before use.
  *
  * This function never modifies cookies. A caller that receives 'rejected'
  * should clear the cookie from a Route Handler or Server Action.
@@ -30,8 +35,14 @@ export type SessionState =
   | { status: 'rejected' }
   /** Xano could not be reached or answered unexpectedly; nothing is known. */
   | { status: 'unavailable' }
-  /** Xano accepted the token. `user` is Xano's current-user response. */
-  | { status: 'authenticated'; user: unknown }
+  /** Xano accepted the token and answered with an object. `user` is that current-user response. */
+  | { status: 'authenticated'; user: Record<string, unknown> }
+
+// A non-empty plain object. Which fields it must carry is decided when the
+// verified current-user contract is bound; nothing is assumed here.
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && Object.keys(value).length > 0
+}
 
 export async function verifySession(
   fetchCurrentUser: CurrentUserFetcher,
@@ -41,7 +52,10 @@ export async function verifySession(
   if (token === null) return { status: 'anonymous' }
 
   const result = await fetchCurrentUser(token)
-  if (result.ok) return { status: 'authenticated', user: result.data }
+  if (result.ok) {
+    // A 2xx alone proves nothing; the answer must at least be an object.
+    return isPlainObject(result.data) ? { status: 'authenticated', user: result.data } : { status: 'unavailable' }
+  }
 
   const { error } = result
   if (error.kind === 'http' && (error.status === 401 || error.status === 403)) {

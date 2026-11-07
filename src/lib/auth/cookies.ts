@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { EnvSource } from '../server/env'
+import { isWellFormedToken } from './token'
 
 /**
  * Session cookie utilities (server only).
@@ -22,9 +23,6 @@ export const SESSION_COOKIE_NAME = 'ayo_session'
 
 /** Matches the confirmed Xano token lifetime of 24 hours. */
 export const SESSION_MAX_AGE_SECONDS = 24 * 60 * 60
-
-const TOKEN_PATTERN = /^[A-Za-z0-9._~+/=-]+$/
-const TOKEN_MAX_LENGTH = 4000 // keeps the whole Set-Cookie under the 4 KiB browser limit
 
 export interface SessionCookieAttributes {
   httpOnly: true
@@ -50,10 +48,9 @@ export function sessionCookieAttributes(env: EnvSource = process.env): SessionCo
   }
 }
 
+/** The one token rule, shared with the Xano client (see ./token.ts). */
 export function isValidSessionToken(value: unknown): value is string {
-  return (
-    typeof value === 'string' && value.length > 0 && value.length <= TOKEN_MAX_LENGTH && TOKEN_PATTERN.test(value)
-  )
+  return isWellFormedToken(value)
 }
 
 // next/headers is loaded lazily so this module can be exercised outside the

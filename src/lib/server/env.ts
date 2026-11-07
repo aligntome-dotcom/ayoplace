@@ -22,9 +22,16 @@ export class ConfigError extends Error {
 /**
  * Parses and validates the Xano instance origin.
  *
- * Accepts only an HTTPS origin with a dotted hostname and nothing else: no
- * credentials, port, path, query or fragment. API group paths are configured
- * in code (see src/lib/xano/groups.ts), never in this variable.
+ * Accepts only an HTTPS origin with a dotted DNS hostname and nothing else: no
+ * credentials, port, path, query or fragment, no IP literal, no trailing dot,
+ * and no control characters anywhere in the raw value (the URL parser would
+ * silently strip those). API group paths are configured in code (see
+ * src/lib/xano/groups.ts), never in this variable.
+ *
+ * The hostname is not pinned to a `.xano.io` suffix on purpose: Xano serves
+ * instances under customer-owned custom domains as well, and nothing in this
+ * project rules that out. The value is operator-controlled configuration;
+ * the checks here catch mistakes, not attackers.
  *
  * The raw value is deliberately not echoed in error messages.
  */
@@ -37,6 +44,12 @@ export function parseXanoBaseUrl(raw: string | undefined): URL {
   }
 
   const value = raw.trim()
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f\s]/.test(value)) {
+    throw new ConfigError(
+      `${XANO_BASE_URL_VAR} contains whitespace or control characters. Expected format: ${EXPECTED_FORMAT}`,
+    )
+  }
   let url: URL
   try {
     url = new URL(value)
@@ -50,6 +63,9 @@ export function parseXanoBaseUrl(raw: string | undefined): URL {
 
   if (url.protocol !== 'https:') reject('must use https')
   if (!url.hostname || !url.hostname.includes('.')) reject('must be a fully qualified hostname')
+  if (url.hostname.endsWith('.')) reject('must not end with a dot')
+  if (url.hostname.startsWith('[') || /^\d+(\.\d+)*$/.test(url.hostname)) reject('must be a DNS hostname, not an IP address')
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(url.hostname)) reject('must be a plain DNS hostname')
   if (url.username || url.password) reject('must not contain credentials')
   if (url.port) reject('must not specify a port')
   if (url.pathname !== '/') reject('must be the instance origin only, with no path')

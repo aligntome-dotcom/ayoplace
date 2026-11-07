@@ -31,9 +31,13 @@ them for the browser):
 
 - `src/lib/server/env.ts` — validated `XANO_BASE_URL`.
 - `src/lib/xano/groups.ts` — verified API group paths (authentication: `/api:QKPf7var`).
-- `src/lib/xano/client.ts` — `xanoFetch`: JSON requests with optional Bearer token, 10 s timeout, no retries, no redirects, no logging; backend failures come back as a result whose `error.toSafe()` is the only shape meant for the browser.
+- `src/lib/xano/client.ts` — `xanoFetch`: JSON requests with optional Bearer token, one 10 s timeout covering headers and body, no retries, no redirects, no logging; the built URL is checked after parsing to still sit inside the API group. Backend failures come back as a result whose `error.toSafe()` is the only shape meant for the browser; the error's internal fields are non-enumerable and `toJSON()` returns the safe shape.
+- `src/lib/auth/token.ts` — the one token rule (`isWellFormedToken`, 4000 characters max) used by both the cookie and the client.
 - `src/lib/auth/cookies.ts` — the `ayo_session` HTTP-only cookie (Secure in production, SameSite=Lax, path `/`, 24 h to match the Xano token). Clearing it ends the browser session only; Xano has no revocation endpoint.
-- `src/lib/auth/session.ts` — `verifySession`: a session counts as authenticated only when Xano accepts the cookie's token; the current-user call is injected and bound in a later step.
+- `src/lib/auth/session.ts` — `verifySession`: a session counts as authenticated only when Xano accepts the cookie's token and answers with an object; the current-user call is injected and bound in a later step.
+- `src/lib/auth/origin.ts` — `checkRequestOrigin`, the CSRF defence every state-changing handler must run. The rules for the handlers themselves are in [docs/auth-handler-requirements.md](docs/auth-handler-requirements.md).
+
+`XANO_BASE_URL` is deliberately not pinned to a `.xano.io` suffix, because Xano instances can be served from custom domains. It must still be a plain https DNS hostname: no IP literals, trailing dots, ports, paths or control characters.
 
 ## What is here so far
 
