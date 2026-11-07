@@ -20,6 +20,11 @@ export default defineConfig({
     url: 'http://localhost:3000',
     reuseExistingServer: true,
     timeout: 60_000,
+    // APP_ORIGIN lets the Origin checks pass for same-origin requests.
+    // XANO_BASE_URL is deliberately NOT set: no instance exists, so the e2e
+    // suite proves the handlers fail safely without a backend. Live Xano
+    // flows are unit-tested with a mocked transport instead.
+    env: { APP_ORIGIN: 'http://localhost:3000' },
   },
   projects: [
     { name: 'desktop', use: { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 } },

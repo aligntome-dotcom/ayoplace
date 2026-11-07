@@ -139,9 +139,15 @@ export interface XanoClientOptions {
 
 export const DEFAULT_TIMEOUT_MS = 10_000
 
+// Endpoint paths are code constants. Allow exactly the characters they use:
+// '/'-separated segments of letters, digits, '.', '_', '~' and '-'. No '%' at
+// all, so no percent-encoded dots, separators, controls or double encodings
+// can reach the URL parser or a downstream decoder.
+const ALLOWED_PATH = /^(\/[A-Za-z0-9._~-]+)+$/
 // Percent-encoded '.', '/' and '\' have no place in an endpoint path: the URL
 // parser would turn encoded dots into traversal segments, and encoded
-// separators only exist to confuse routers.
+// separators only exist to confuse routers. (Already excluded by ALLOWED_PATH;
+// kept as a named check so the intent survives any later relaxation.)
 const ENCODED_SEPARATOR = /%(2e|2f|5c)/i
 // Query, fragment, whitespace, C0 controls (including NUL) and DEL.
 const FORBIDDEN_PATH_CHARS = /[?#\s\u0000-\u001f\u007f]/
@@ -172,8 +178,11 @@ export function buildXanoUrl(
   if (ENCODED_SEPARATOR.test(path)) {
     throw new Error('Xano request path must not contain percent-encoded dots or separators')
   }
+  if (!ALLOWED_PATH.test(path)) {
+    throw new Error('Xano request path may contain only /-separated segments of [A-Za-z0-9._~-]')
+  }
+  if (!Object.hasOwn(XANO_API_GROUPS, group)) throw new Error('Unknown Xano API group')
   const groupPath = XANO_API_GROUPS[group]
-  if (!groupPath) throw new Error('Unknown Xano API group')
 
   const url = new URL(`${groupPath}${path}`, base.origin)
 

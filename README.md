@@ -32,12 +32,34 @@ them for the browser):
 - `src/lib/server/env.ts` — validated `XANO_BASE_URL`.
 - `src/lib/xano/groups.ts` — verified API group paths (authentication: `/api:QKPf7var`).
 - `src/lib/xano/client.ts` — `xanoFetch`: JSON requests with optional Bearer token, one 10 s timeout covering headers and body, no retries, no redirects, no logging; the built URL is checked after parsing to still sit inside the API group. Backend failures come back as a result whose `error.toSafe()` is the only shape meant for the browser; the error's internal fields are non-enumerable and `toJSON()` returns the safe shape.
-- `src/lib/auth/token.ts` — the one token rule (`isWellFormedToken`, 4000 characters max) used by both the cookie and the client.
+- `src/lib/auth/token.ts` — the one token rule (`isWellFormedToken`, 3900 characters max, derived from the 4096-byte Set-Cookie limit minus Next's 106 bytes of attributes) used by the cookie, the client and session verification.
+- `src/lib/auth/current-user.ts` — the verified current-user contract (`role` from the five known values, `is_active` boolean).
+- `src/lib/xano/auth.ts` — the three verified operations: login, customer signup, current user.
+- `src/lib/auth/handlers.ts` — the Route Handler logic with injectable transport and cookie store (unit-tested against a mocked Xano).
 - `src/lib/auth/cookies.ts` — the `ayo_session` HTTP-only cookie (Secure in production, SameSite=Lax, path `/`, 24 h to match the Xano token). Clearing it ends the browser session only; Xano has no revocation endpoint.
 - `src/lib/auth/session.ts` — `verifySession`: a session counts as authenticated only when Xano accepts the cookie's token and answers with an object; the current-user call is injected and bound in a later step.
 - `src/lib/auth/origin.ts` — `checkRequestOrigin`, the CSRF defence every state-changing handler must run. The rules for the handlers themselves are in [docs/auth-handler-requirements.md](docs/auth-handler-requirements.md).
 
 `XANO_BASE_URL` is deliberately not pinned to a `.xano.io` suffix, because Xano instances can be served from custom domains. It must still be a plain https DNS hostname: no IP literals, trailing dots, ports, paths or control characters.
+
+## Customer authentication
+
+Routes: `/login`, `/signup` (customer only; the event-planner card says
+"Registration opens soon" and has no form), `/account` (signed-in customer,
+data straight from Xano's current-user endpoint), and the Route Handlers
+`POST /api/auth/login`, `POST /api/auth/signup`, `POST /api/auth/logout`,
+`GET /api/auth/session`. The exact Xano contracts are in
+[docs/xano-contracts.md](docs/xano-contracts.md); the handler rules in
+[docs/auth-handler-requirements.md](docs/auth-handler-requirements.md).
+
+Every state-changing handler checks the request Origin against `APP_ORIGIN`
+before reading the body, calls Xano, verifies the new token with
+`GET /auth/me` (role must be `customer`, `is_active` must be true), and only
+then sets the HTTP-only `ayo_session` cookie. Logout clears that cookie; the
+Xano token itself stays valid at Xano until it expires (24 h) or the account
+becomes ineligible, because Xano has no revocation endpoint. Without
+`XANO_BASE_URL` and `APP_ORIGIN` in `.env.local` the handlers answer with a
+safe 503/403 and nothing else.
 
 ## What is here so far
 

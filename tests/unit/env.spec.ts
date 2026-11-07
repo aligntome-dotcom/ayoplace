@@ -15,7 +15,7 @@ test.describe('XANO_BASE_URL validation', () => {
   }
 
   const bad: Array<[string, RegExp]> = [
-    ['not a url', /whitespace or control characters/],
+    ['not a url', /whitespace, non-ASCII or control characters/],
     ['notaurl', /not a valid URL/],
     ['abc.xano.io', /not a valid URL/],
     ['http://abc.xano.io', /must use https/],

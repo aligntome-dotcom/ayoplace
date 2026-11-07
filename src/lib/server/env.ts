@@ -44,10 +44,13 @@ export function parseXanoBaseUrl(raw: string | undefined): URL {
   }
 
   const value = raw.trim()
-  // eslint-disable-next-line no-control-regex
-  if (/[\u0000-\u001f\u007f\s]/.test(value)) {
+  // Printable ASCII only. Rejects whitespace, C0/DEL controls and every
+  // non-ASCII character, including invisible ones (zero-width space, soft
+  // hyphen, bidi marks) that the URL parser would otherwise strip silently.
+  // Internationalised hostnames must be supplied as punycode (xn--).
+  if (/[^!-~]/.test(value)) {
     throw new ConfigError(
-      `${XANO_BASE_URL_VAR} contains whitespace or control characters. Expected format: ${EXPECTED_FORMAT}`,
+      `${XANO_BASE_URL_VAR} contains whitespace, non-ASCII or control characters. Expected format: ${EXPECTED_FORMAT}`,
     )
   }
   let url: URL
@@ -65,7 +68,7 @@ export function parseXanoBaseUrl(raw: string | undefined): URL {
   if (!url.hostname || !url.hostname.includes('.')) reject('must be a fully qualified hostname')
   if (url.hostname.endsWith('.')) reject('must not end with a dot')
   if (url.hostname.startsWith('[') || /^\d+(\.\d+)*$/.test(url.hostname)) reject('must be a DNS hostname, not an IP address')
-  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(url.hostname)) reject('must be a plain DNS hostname')
+  if (!isDnsHostname(url.hostname)) reject('must be a plain DNS hostname')
   if (url.username || url.password) reject('must not contain credentials')
   if (url.port) reject('must not specify a port')
   if (url.pathname !== '/') reject('must be the instance origin only, with no path')
@@ -75,7 +78,62 @@ export function parseXanoBaseUrl(raw: string | undefined): URL {
   return url
 }
 
+/**
+ * DNS hostname rules (RFC 1123 LDH): two or more labels, each 1–63 characters
+ * of [a-z0-9-] that neither start nor end with '-', 253 characters in total.
+ * Custom domains are fine; nothing pins the suffix.
+ */
+export function isDnsHostname(hostname: string): boolean {
+  if (hostname.length > 253) return false
+  const labels = hostname.split('.')
+  if (labels.length < 2) return false
+  return labels.every((label) => /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
+}
+
 /** Returns the validated Xano origin from the environment (server only). */
 export function getXanoBaseUrl(env: EnvSource = process.env): URL {
   return parseXanoBaseUrl(env[XANO_BASE_URL_VAR])
+}
+
+export const APP_ORIGIN_VAR = 'APP_ORIGIN'
+
+/**
+ * This application's own origin, used to validate the Origin of state-changing
+ * requests. Trusted configuration only: never derived from Host or
+ * X-Forwarded-Host. https is required except for localhost during local
+ * development. Returns the normalised origin string, e.g.
+ * https://www.theayoplace.com or http://localhost:3000.
+ */
+export function parseAppOrigin(raw: string | undefined): string {
+  if (raw === undefined || raw.trim() === '') {
+    throw new ConfigError(
+      `${APP_ORIGIN_VAR} is not set. Set it to this site's own origin (for example https://www.example.com, ` +
+        `or http://localhost:3000 for local development) in .env.local and in the Vercel environment.`,
+    )
+  }
+  const value = raw.trim()
+  if (/[^!-~]/.test(value)) {
+    throw new ConfigError(`${APP_ORIGIN_VAR} contains whitespace, non-ASCII or control characters.`)
+  }
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    throw new ConfigError(`${APP_ORIGIN_VAR} is not a valid URL.`)
+  }
+  const local = url.hostname === 'localhost' || url.hostname === '127.0.0.1'
+  if (url.protocol !== 'https:' && !(url.protocol === 'http:' && local)) {
+    throw new ConfigError(`${APP_ORIGIN_VAR} must use https (http is allowed for localhost only).`)
+  }
+  if (url.username || url.password || url.search || url.hash || url.pathname !== '/') {
+    throw new ConfigError(`${APP_ORIGIN_VAR} must be an origin only: scheme, host and optional port.`)
+  }
+  if (!local && (url.hostname.startsWith('[') || /^\d+(\.\d+)*$/.test(url.hostname) || !isDnsHostname(url.hostname))) {
+    throw new ConfigError(`${APP_ORIGIN_VAR} must use a plain DNS hostname.`)
+  }
+  return url.origin
+}
+
+export function getAppOrigin(env: EnvSource = process.env): string {
+  return parseAppOrigin(env[APP_ORIGIN_VAR])
 }

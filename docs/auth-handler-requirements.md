@@ -20,8 +20,11 @@ follow them exactly. No handler exists yet.
   origin only when `Origin` is absent, and vetoes any request whose
   `Sec-Fetch-Site` is `cross-site`. `Sec-Fetch-Site` is never the sole check:
   not every client sends it.
-- Server Actions get an equivalent Origin-versus-Host check from Next itself;
-  Route Handlers do not, which is why the helper is mandatory there.
+- Authentication mutations are **Route Handlers only**, never Server Actions.
+  Next's built-in Server Action check compares Origin with the Host header,
+  which rule 7 below forbids as a trust source; keeping these flows in Route
+  Handlers means `checkRequestOrigin` with the configured `APP_ORIGIN` is the
+  one mechanism in use.
 
 ## 2. Methods and cookies
 

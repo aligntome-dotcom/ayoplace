@@ -43,6 +43,30 @@ test.describe('API group containment', () => {
     'https://evil.example/x',
     'auth/login',
     '/café',
+    // Percent-encoded controls, double encodings and overlong sequences that
+    // a downstream decoder could turn back into separators or controls.
+    '/a%00b',
+    '/a%0ab',
+    '/a%0d%0ab',
+    '/a%1fb',
+    '/a%7fb',
+    '/%252e%252e/x',
+    '/%252E%252E/x',
+    '/%25252e/x',
+    '/%C0%AE%C0%AE/x',
+    '/%c0%afx',
+    '/%E2%80%AE',
+    '/a%20b',
+    '/a%25b',
+    '/x%',
+    '/x%zz',
+    '/a;b',
+    '/a@b',
+    '/a:b',
+    '/api:other/x',
+    '/a//b',
+    '/x/',
+    '/',
   ]
   for (const path of escapes) {
     test(`rejects ${JSON.stringify(path)}`, () => {
@@ -54,14 +78,14 @@ test.describe('API group containment', () => {
     const valid = [
       '/auth/login',
       '/auth/me',
+      '/auth/signup',
       '/reset/request-reset-link',
       '/customers/me',
       '/a/b/c-d_e.json',
       '/a~b',
       '/items/42',
-      '/a%20b',
       '/x.y.z',
-      '/api:other/x', // a group-looking segment nested inside our group is still inside it
+      '/v2/events/2026-11-07/guests',
     ]
     for (const path of valid) {
       const url = buildXanoUrl(BASE, 'authentication', path, { q: 'x/../../y' })
@@ -289,10 +313,10 @@ test.describe('verifySession response shape', () => {
 // ---------------------------------------------------------------------------
 test.describe('token limit is shared', () => {
   test('one documented limit, enforced identically by cookie and client', () => {
-    expect(TOKEN_MAX_LENGTH).toBe(4000)
-    for (const n of [1, 100, 3999, 4000, 4001, 4096, 4097]) {
+    expect(TOKEN_MAX_LENGTH).toBe(3900)
+    for (const n of [1, 100, 3899, 3900, 3901, 4000, 4096, 4097]) {
       const token = 'a'.repeat(n)
-      const expected = n <= 4000
+      const expected = n <= 3900
       expect(isWellFormedToken(token), `client ${n}`).toBe(expected)
       expect(isValidSessionToken(token), `cookie ${n}`).toBe(expected)
     }
@@ -337,7 +361,29 @@ test.describe('XANO_BASE_URL hostname rules', () => {
     ['https://abc.xano.io\r\n/', /control characters/],
     ['https://abc\u0000.xano.io', /control characters/],
     ['https://abc .xano.io', /control characters/],
+    // Invisible or non-ASCII characters the URL parser would otherwise strip or map.
+    ['https://abc​.xano.io', /non-ASCII/],
+    ['https://abc­.xano.io', /non-ASCII/],
+    ['https://abc‎.xano.io', /non-ASCII/],
+    ['https://abc﻿.xano.io', /non-ASCII/],
+    ['https://abc.ещё.xano.io', /non-ASCII/],
+    ['https://abc。xano.io', /non-ASCII/],
+    ['https://ＡＢＣ.xano.io', /non-ASCII/],
+    // DNS-invalid labels.
+    ['https://-abc.xano.io', /plain DNS/],
+    ['https://abc-.xano.io', /plain DNS/],
+    [`https://${'a'.repeat(64)}.xano.io`, /plain DNS/],
+    [`https://${Array.from({ length: 5 }, () => 'a'.repeat(60)).join('.')}.xano.io`, /plain DNS/],
+    ['https://abc..xano.io', /not a valid URL|plain DNS/],
   ]
+
+  test('label boundaries: 63-character labels and 253-character hostnames are still valid', () => {
+    expect(parseXanoBaseUrl(`https://${'a'.repeat(63)}.xano.io`).hostname).toBe(`${'a'.repeat(63)}.xano.io`)
+    const host253 = `${Array.from({ length: 4 }, () => 'a'.repeat(60)).join('.')}.${'b'.repeat(9)}` // 4*60+4+9 = 253
+    expect(host253.length).toBe(253)
+    expect(parseXanoBaseUrl(`https://${host253}`).hostname).toBe(host253)
+    expect(() => parseXanoBaseUrl(`https://${host253}b`)).toThrow(/plain DNS/)
+  })
   for (const [raw, why] of rejected) {
     test(`rejects ${JSON.stringify(raw)}`, () => {
       expect(() => parseXanoBaseUrl(raw)).toThrow(ConfigError)
