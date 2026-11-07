@@ -4,6 +4,7 @@ import { defineConfig } from '@playwright/test'
 // Uses the Chrome already installed on the machine (no browser download).
 export default defineConfig({
   testDir: './tests',
+  testIgnore: ['**/unit/**'], // node-only unit tests run via playwright.unit.config.ts
   timeout: 180_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,

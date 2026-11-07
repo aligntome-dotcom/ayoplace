@@ -1,0 +1,253 @@
+import 'server-only'
+
+import { getXanoBaseUrl, type EnvSource } from '../server/env'
+import { XANO_API_GROUPS, type XanoApiGroup } from './groups'
+
+/**
+ * Server-only HTTP client for the Xano backend.
+ *
+ * - Builds every URL from the validated XANO_BASE_URL and a verified API group.
+ * - Sends and receives JSON; attaches a Bearer token when one is supplied.
+ * - Never retries, never follows redirects (a redirect would carry the
+ *   Authorization header elsewhere), never logs.
+ * - Returns a discriminated result instead of throwing for backend responses,
+ *   and throws only for programming or configuration errors.
+ *
+ * Errors come in two layers: XanoError carries the internal detail (HTTP
+ * status, backend message, cause) for server-side decisions, and
+ * XanoError.toSafe() produces the only shape that may reach a browser.
+ */
+
+export type XanoMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+
+export type XanoErrorKind = 'http' | 'network' | 'timeout' | 'invalid_response'
+
+export type SafeErrorCode =
+  | 'unauthorized'
+  | 'forbidden'
+  | 'not_found'
+  | 'bad_request'
+  | 'conflict'
+  | 'backend_unavailable'
+  | 'backend_error'
+
+/** The only error shape that may be serialised to the browser. */
+export interface SafeError {
+  code: SafeErrorCode
+  message: string
+}
+
+const SAFE_MESSAGES: Record<SafeErrorCode, string> = {
+  unauthorized: 'Your session is not valid. Please sign in again.',
+  forbidden: 'This action is not allowed.',
+  not_found: 'The requested item could not be found.',
+  bad_request: 'The request could not be processed.',
+  conflict: 'The request conflicts with existing data.',
+  backend_unavailable: 'The service is temporarily unavailable. Please try again shortly.',
+  backend_error: 'Something went wrong on our side. Please try again shortly.',
+}
+
+export class XanoError extends Error {
+  override readonly name = 'XanoError'
+  readonly kind: XanoErrorKind
+  /** HTTP status for kind 'http'. */
+  readonly status?: number
+  /**
+   * The backend's own `message` field, when the response carried one.
+   * Server-side use only (for example to distinguish backend outcomes);
+   * it is never included in message, toString() or toSafe().
+   */
+  readonly backendMessage?: string
+
+  constructor(
+    kind: XanoErrorKind,
+    message: string,
+    options: { status?: number; backendMessage?: string; cause?: unknown } = {},
+  ) {
+    super(message, options.cause === undefined ? undefined : { cause: options.cause })
+    this.kind = kind
+    if (options.status !== undefined) this.status = options.status
+    if (options.backendMessage !== undefined) this.backendMessage = options.backendMessage
+  }
+
+  get safeCode(): SafeErrorCode {
+    switch (this.kind) {
+      case 'network':
+      case 'timeout':
+        return 'backend_unavailable'
+      case 'invalid_response':
+        return 'backend_error'
+      case 'http': {
+        const s = this.status ?? 0
+        if (s === 401) return 'unauthorized'
+        if (s === 403) return 'forbidden'
+        if (s === 404) return 'not_found'
+        if (s === 409) return 'conflict'
+        if (s >= 400 && s < 500) return 'bad_request'
+        return 'backend_error'
+      }
+    }
+  }
+
+  /** Generic, browser-safe representation. Contains no backend text. */
+  toSafe(): SafeError {
+    const code = this.safeCode
+    return { code, message: SAFE_MESSAGES[code] }
+  }
+}
+
+export type XanoResult<T> = { ok: true; status: number; data: T } | { ok: false; error: XanoError }
+
+export interface XanoRequest {
+  group: XanoApiGroup
+  /** Path within the group, starting with '/', e.g. '/auth/login'. */
+  path: string
+  method?: XanoMethod
+  /** JSON body. Not permitted on GET. */
+  body?: unknown
+  /** Query parameters; undefined values are omitted. */
+  query?: Record<string, string | number | boolean | undefined>
+  /** Bearer token for authenticated endpoints. */
+  token?: string
+  /** Request timeout in milliseconds (default 10 000). */
+  timeoutMs?: number
+}
+
+export interface XanoClientOptions {
+  /** fetch implementation (injectable for tests). */
+  fetch?: typeof fetch
+  /** Environment source (injectable for tests). */
+  env?: EnvSource
+}
+
+export const DEFAULT_TIMEOUT_MS = 10_000
+
+const TOKEN_PATTERN = /^[A-Za-z0-9._~+/=-]+$/
+
+/** Builds the absolute request URL from the base origin, group and path. */
+export function buildXanoUrl(
+  base: URL,
+  group: XanoApiGroup,
+  path: string,
+  query?: XanoRequest['query'],
+): URL {
+  if (typeof path !== 'string' || !path.startsWith('/')) {
+    throw new Error('Xano request path must start with "/"')
+  }
+  if (path.includes('..') || path.includes('://') || path.startsWith('//')) {
+    throw new Error('Xano request path must be a plain path within the API group')
+  }
+  if (/[?#\s]/.test(path)) {
+    throw new Error('Xano request path must not contain a query, fragment or whitespace')
+  }
+  const groupPath = XANO_API_GROUPS[group]
+  if (!groupPath) throw new Error('Unknown Xano API group')
+
+  const url = new URL(`${groupPath}${path}`, base.origin)
+  if (query) {
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined) url.searchParams.set(key, String(value))
+    }
+  }
+  return url
+}
+
+/** Builds request headers; the Authorization header is added only when a token is given. */
+export function buildXanoHeaders(options: { token?: string; hasBody: boolean }): Record<string, string> {
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (options.hasBody) headers['Content-Type'] = 'application/json'
+  if (options.token !== undefined) {
+    if (!isWellFormedToken(options.token)) {
+      // Deliberately does not include the offending value.
+      throw new Error('Bearer token is malformed')
+    }
+    headers.Authorization = `Bearer ${options.token}`
+  }
+  return headers
+}
+
+export function isWellFormedToken(token: unknown): token is string {
+  return typeof token === 'string' && token.length > 0 && token.length <= 4096 && TOKEN_PATTERN.test(token)
+}
+
+async function readBody(response: Response): Promise<{ text: string; json: unknown; parsed: boolean }> {
+  const text = await response.text()
+  if (text.trim() === '') return { text, json: null, parsed: true }
+  try {
+    return { text, json: JSON.parse(text) as unknown, parsed: true }
+  } catch {
+    return { text, json: null, parsed: false }
+  }
+}
+
+function backendMessageOf(json: unknown): string | undefined {
+  if (json && typeof json === 'object' && 'message' in json) {
+    const m = (json as { message: unknown }).message
+    if (typeof m === 'string') return m
+  }
+  return undefined
+}
+
+/**
+ * Performs one request against Xano. Resolves with a result for any backend
+ * response or transport failure; rejects only for programming errors
+ * (bad path, malformed token, body on GET) and configuration errors.
+ */
+export async function xanoFetch<T = unknown>(
+  request: XanoRequest,
+  options: XanoClientOptions = {},
+): Promise<XanoResult<T>> {
+  const method: XanoMethod = request.method ?? 'GET'
+  if (method === 'GET' && request.body !== undefined) {
+    throw new Error('GET requests cannot carry a body')
+  }
+
+  const base = getXanoBaseUrl(options.env)
+  const url = buildXanoUrl(base, request.group, request.path, request.query)
+  const hasBody = request.body !== undefined
+  const headers = buildXanoHeaders({ token: request.token, hasBody })
+  const doFetch = options.fetch ?? fetch
+
+  const controller = new AbortController()
+  const timeoutMs = request.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+
+  let response: Response
+  try {
+    response = await doFetch(url, {
+      method,
+      headers,
+      body: hasBody ? JSON.stringify(request.body) : undefined,
+      signal: controller.signal,
+      redirect: 'manual',
+      cache: 'no-store',
+    })
+  } catch (cause) {
+    clearTimeout(timer)
+    if (controller.signal.aborted) {
+      return { ok: false, error: new XanoError('timeout', `Xano request timed out after ${timeoutMs} ms`) }
+    }
+    return { ok: false, error: new XanoError('network', 'Xano could not be reached', { cause }) }
+  }
+  clearTimeout(timer)
+
+  const { json, parsed } = await readBody(response)
+
+  if (response.status >= 200 && response.status < 300) {
+    if (!parsed) {
+      return {
+        ok: false,
+        error: new XanoError('invalid_response', `Xano returned a non-JSON body with HTTP ${response.status}`),
+      }
+    }
+    return { ok: true, status: response.status, data: json as T }
+  }
+
+  return {
+    ok: false,
+    error: new XanoError('http', `Xano responded with HTTP ${response.status}`, {
+      status: response.status,
+      backendMessage: backendMessageOf(json),
+    }),
+  }
+}
