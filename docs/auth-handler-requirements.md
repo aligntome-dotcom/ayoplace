@@ -40,9 +40,19 @@ follow them exactly. No handler exists yet.
   Origin check. Clearing the cookie ends the browser session only; it is not a
   server-side revocation. Xano has no revocation endpoint, and the token stays
   valid there until it expires or the account becomes ineligible.
-- When `verifySession` returns `rejected`, the next Route Handler or Server
-  Action in the flow clears the cookie. Server Components cannot write cookies
-  and must not try.
+- When `verifySession` returns `rejected`, the cookie is cleared through the
+  POST logout handler, and only on the strength of that server-side
+  verification: the login page passes its own verified rejection to the form,
+  which then posts to `/api/auth/logout`. A query parameter, Referer or any
+  client-supplied flag is never accepted as proof of rejection, so a link
+  cannot sign a visitor out. Server Components cannot write cookies and must
+  not try.
+- Request bodies are read through `readBoundedJsonObject`, which stops reading
+  and rejects with 413 once more than 16 KiB have arrived, measured in bytes
+  and without trusting Content-Length.
+- Only the documented Xano statuses are mapped to credential or validation
+  outcomes (403 at login; 403 duplicate and 400 at signup). Every other
+  status is reported as a backend failure, never as "invalid credentials".
 
 ## 3. What never changes
 

@@ -2,18 +2,16 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { AuthShell } from '@/components/auth/AuthShell'
 import { LoginForm } from '@/components/auth/LoginForm'
-import { getPageSession } from '@/lib/auth/page-session'
+import { getPageSession, sessionWasRejected } from '@/lib/auth/page-session'
 
 export const dynamic = 'force-dynamic'
 
-export default async function LoginPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>
-}) {
+export default async function LoginPage() {
   const session = await getPageSession()
   if (session.status === 'authenticated' && session.user.role === 'customer') redirect('/account')
-  const { reason } = await searchParams
+  // Only a rejection observed by this server render may clear the stale
+  // cookie. Nothing from the URL or the client is consulted.
+  const sessionRejected = sessionWasRejected(session)
 
   return (
     <AuthShell
@@ -29,7 +27,7 @@ export default async function LoginPage({
         </p>
       }
     >
-      <LoginForm expired={reason === 'expired'} />
+      <LoginForm sessionRejected={sessionRejected} />
     </AuthShell>
   )
 }

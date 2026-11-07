@@ -5,7 +5,12 @@ import { useRouter } from 'next/navigation'
 import { postJson } from './api'
 import { buttonClass, Field, FormError } from './fields'
 
-export function LoginForm({ expired = false }: { expired?: boolean }) {
+/**
+ * `sessionRejected` is set by the server-rendered login page only when its
+ * own verification saw Xano reject the existing cookie. It is never derived
+ * from the URL, so a link cannot make this form sign anyone out.
+ */
+export function LoginForm({ sessionRejected = false }: { sessionRejected?: boolean }) {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -18,8 +23,8 @@ export function LoginForm({ expired = false }: { expired?: boolean }) {
   // A session the server rejected leaves a stale cookie behind. Clear it
   // through the logout handler (a POST, with the Origin check), never via GET.
   useEffect(() => {
-    if (expired) void postJson('/api/auth/logout', {})
-  }, [expired])
+    if (sessionRejected) void postJson('/api/auth/logout', {})
+  }, [sessionRejected])
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -47,7 +52,7 @@ export function LoginForm({ expired = false }: { expired?: boolean }) {
 
   return (
     <form onSubmit={onSubmit} noValidate aria-busy={submitting} aria-describedby="login-error" className="space-y-5">
-      {expired ? (
+      {sessionRejected ? (
         <p className="rounded-md border border-[#d8b98a] bg-[#f4ecdd] px-3 py-2 text-sm text-neutral-800">
           Your session has ended. Please sign in again.
         </p>

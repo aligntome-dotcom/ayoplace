@@ -33,6 +33,7 @@ export interface HandlerDeps {
 export type AuthErrorCode =
   | 'invalid_origin'
   | 'invalid_request'
+  | 'request_too_large'
   | 'invalid_credentials'
   | 'account_inactive'
   | 'email_taken'
@@ -42,6 +43,7 @@ export type AuthErrorCode =
 const MESSAGES: Record<AuthErrorCode, string> = {
   invalid_origin: 'This request was not accepted.',
   invalid_request: 'Please check the details you entered.',
+  request_too_large: 'The request was too large.',
   invalid_credentials: 'Sign-in failed. Check your email and password.',
   account_inactive: 'This account is not active. Please contact us.',
   email_taken: 'An account with this email already exists. Try signing in instead.',
@@ -80,7 +82,8 @@ const EMAIL_MAX = 254
 const PASSWORD_MIN = 8
 const PASSWORD_MAX = 256
 const NAME_MAX = 120
-const BODY_MAX_BYTES = 16 * 1024
+/** Hard cap on a request body, in bytes, enforced while the body streams in. */
+export const BODY_MAX_BYTES = 16 * 1024
 
 /** Keys a signup body must never carry; the backend decides all of them. */
 export const FORBIDDEN_SIGNUP_KEYS = ['role', 'is_active', 'status', 'experience', 'id', 'user_id'] as const
@@ -97,26 +100,76 @@ function originGate(request: Request, env: EnvSource): Response | null {
   return check.ok ? null : fail(403, 'invalid_origin')
 }
 
-async function readJsonObject(request: Request): Promise<Record<string, unknown> | null> {
+export type BodyRead =
+  | { ok: true; value: Record<string, unknown> }
+  | { ok: false; reason: 'too_large' | 'invalid' }
+
+/**
+ * Reads the request body as bytes with a hard cap, then parses it as a JSON
+ * object. The cap is enforced while streaming: once more than
+ * BODY_MAX_BYTES have arrived the reader is cancelled and nothing further
+ * is buffered. Content-Length is used only as an early exit; it is never
+ * trusted to be present or truthful. Invalid UTF-8 and malformed or
+ * non-object JSON are rejected.
+ */
+export async function readBoundedJsonObject(request: Request, maxBytes: number = BODY_MAX_BYTES): Promise<BodyRead> {
   const type = request.headers.get('content-type') ?? ''
-  if (!/^application\/json(\s*;|$)/i.test(type)) return null
-  const length = Number(request.headers.get('content-length') ?? '0')
-  if (Number.isFinite(length) && length > BODY_MAX_BYTES) return null
+  if (!/^application\/json(\s*;|$)/i.test(type)) return { ok: false, reason: 'invalid' }
+
+  const declared = request.headers.get('content-length')
+  if (declared !== null && /^\d+$/.test(declared) && Number(declared) > maxBytes) return { ok: false, reason: 'too_large' }
+
+  if (request.body === null) return { ok: false, reason: 'invalid' }
+  const reader = request.body.getReader()
+  const chunks: Uint8Array[] = []
+  let received = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!value) continue
+      received += value.byteLength
+      if (received > maxBytes) {
+        await reader.cancel().catch(() => undefined)
+        return { ok: false, reason: 'too_large' }
+      }
+      chunks.push(value)
+    }
+  } catch {
+    // Aborted or errored stream.
+    return { ok: false, reason: 'invalid' }
+  } finally {
+    reader.releaseLock()
+  }
+
+  const bytes = new Uint8Array(received)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+
   let text: string
   try {
-    text = await request.text()
+    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
   } catch {
-    return null
+    return { ok: false, reason: 'invalid' }
   }
-  if (text.length > BODY_MAX_BYTES) return null
   let parsed: unknown
   try {
     parsed = JSON.parse(text)
   } catch {
-    return null
+    return { ok: false, reason: 'invalid' }
   }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null
-  return parsed as Record<string, unknown>
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return { ok: false, reason: 'invalid' }
+  return { ok: true, value: parsed as Record<string, unknown> }
+}
+
+/** Reads the body for a handler, or returns the response that rejects it. */
+async function readJsonObject(request: Request): Promise<{ body: Record<string, unknown> } | { response: Response }> {
+  const read = await readBoundedJsonObject(request)
+  if (read.ok) return { body: read.value }
+  return { response: read.reason === 'too_large' ? fail(413, 'request_too_large') : fail(400, 'invalid_request') }
 }
 
 export function normaliseEmail(value: unknown): string | null {
@@ -194,8 +247,9 @@ export function handleLogin(request: Request, deps: HandlerDeps = {}): Promise<R
     const denied = originGate(request, env)
     if (denied) return denied
 
-    const body = await readJsonObject(request)
-    if (body === null) return fail(400, 'invalid_request')
+    const read = await readJsonObject(request)
+    if ('response' in read) return read.response
+    const { body } = read
     const email = normaliseEmail(body.email)
     const password = body.password
     if (email === null || !validPassword(password)) return fail(400, 'invalid_request')
@@ -204,8 +258,11 @@ export function handleLogin(request: Request, deps: HandlerDeps = {}): Promise<R
     const result = await login({ email, password }, opts)
     if (!result.ok) {
       const { error } = result
-      if (isBackendMessage(error, 'This account has been deactivated')) return fail(403, 'account_inactive')
-      if (error.kind === 'http' && error.status !== undefined && error.status >= 400 && error.status < 500) {
+      // The verified contract: 403 for bad credentials and for deactivated
+      // accounts (distinguished by message). Any other status is not a
+      // credential outcome and is reported as a backend failure.
+      if (error.kind === 'http' && error.status === 403) {
+        if (isBackendMessage(error, 'This account has been deactivated')) return fail(403, 'account_inactive')
         return fail(401, 'invalid_credentials')
       }
       return backendFailure(error)
@@ -226,8 +283,9 @@ export function handleSignup(request: Request, deps: HandlerDeps = {}): Promise<
     const denied = originGate(request, env)
     if (denied) return denied
 
-    const body = await readJsonObject(request)
-    if (body === null) return fail(400, 'invalid_request')
+    const read = await readJsonObject(request)
+    if ('response' in read) return read.response
+    const { body } = read
     // No client may choose a role or any account attribute.
     if (FORBIDDEN_SIGNUP_KEYS.some((key) => key in body)) return fail(400, 'invalid_request')
     const name = normaliseName(body.name)
@@ -239,10 +297,12 @@ export function handleSignup(request: Request, deps: HandlerDeps = {}): Promise<
     const result = await signupCustomer({ name, email, password }, opts)
     if (!result.ok) {
       const { error } = result
-      if (isBackendMessage(error, 'An account with this email already exists')) return fail(409, 'email_taken')
-      if (error.kind === 'http' && error.status !== undefined && error.status >= 400 && error.status < 500) {
-        return fail(400, 'invalid_request')
+      // The verified contract: 403 for a duplicate email, 400 for a missing
+      // email. Anything else is a backend failure, not a validation outcome.
+      if (error.kind === 'http' && error.status === 403 && isBackendMessage(error, 'An account with this email already exists')) {
+        return fail(409, 'email_taken')
       }
+      if (error.kind === 'http' && error.status === 400) return fail(400, 'invalid_request')
       return backendFailure(error)
     }
     const auth = parseAuthResponse(result.data)

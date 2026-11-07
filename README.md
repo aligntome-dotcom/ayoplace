@@ -55,7 +55,10 @@ data straight from Xano's current-user endpoint), and the Route Handlers
 Every state-changing handler checks the request Origin against `APP_ORIGIN`
 before reading the body, calls Xano, verifies the new token with
 `GET /auth/me` (role must be `customer`, `is_active` must be true), and only
-then sets the HTTP-only `ayo_session` cookie. Logout clears that cookie; the
+then sets the HTTP-only `ayo_session` cookie. Bodies are capped at 16 KiB
+while streaming in. A cookie that Xano rejects is cleared only after the login
+page's own server-side verification has seen that rejection; no URL parameter
+can trigger it. Logout clears that cookie; the
 Xano token itself stays valid at Xano until it expires (24 h) or the account
 becomes ineligible, because Xano has no revocation endpoint. Without
 `XANO_BASE_URL` and `APP_ORIGIN` in `.env.local` the handlers answer with a

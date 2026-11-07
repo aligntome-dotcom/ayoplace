@@ -122,13 +122,33 @@ test.describe('auth handlers over HTTP', () => {
     expect(setCookie).toMatch(/SameSite=lax/i)
   })
 
-  test('a session the server rejected is cleared by the login page through the POST logout handler', async ({ page, context }) => {
+  test('a link to /login?reason=expired cannot sign a visitor out; cleanup needs the server to see Xano reject the cookie', async ({ page, context }) => {
+    // With no backend configured the server verdict is "unavailable", never
+    // "rejected", so the cleanup must not fire whatever the URL says.
     await context.addCookies([{ name: 'ayo_session', value: 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOjE0fQ.c2lnbmF0dXJl', url: ORIGIN, httpOnly: true, sameSite: 'Lax' }])
-    const logout = page.waitForResponse((r) => r.url().endsWith('/api/auth/logout') && r.request().method() === 'POST')
-    await page.goto('/login?reason=expired')
-    await expect(page.getByText('Your session has ended. Please sign in again.')).toBeVisible()
-    expect((await logout).status()).toBe(200)
-    await expect.poll(async () => (await context.cookies()).find((c) => c.name === 'ayo_session')).toBeUndefined()
+    const logoutCalls: string[] = []
+    page.on('request', (r) => {
+      if (r.url().endsWith('/api/auth/logout')) logoutCalls.push(r.method())
+    })
+    for (const url of ['/login?reason=expired', '/login?expired=1&reason=expired', '/login']) {
+      await page.goto(url)
+      await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible()
+      await page.waitForTimeout(500)
+      await expect(page.getByText('Your session has ended. Please sign in again.')).toHaveCount(0)
+    }
+    expect(logoutCalls).toEqual([])
+    const cookie = (await context.cookies()).find((c) => c.name === 'ayo_session')
+    expect(cookie?.value).toBe('eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOjE0fQ.c2lnbmF0dXJl')
+  })
+
+  test('oversized request bodies are refused with 413 before any backend call, without a cookie', async ({ request }) => {
+    const big = JSON.stringify({ email: 'jane@example.com', password: 'password123', pad: 'a'.repeat(17 * 1024) })
+    for (const path of ['/api/auth/login', '/api/auth/signup']) {
+      const res = await request.post(path, { headers: { ...JSON_HEADERS, Origin: ORIGIN }, data: big })
+      expect(res.status(), path).toBe(413)
+      expect((await res.json()).error.code).toBe('request_too_large')
+      expect(res.headers()['set-cookie']).toBeUndefined()
+    }
   })
 
   test('no browser-visible response ever carries a token', async ({ request }) => {

@@ -11,7 +11,9 @@ export default async function AccountPage() {
   const session = await getPageSession()
 
   if (session.status === 'anonymous') redirect('/login')
-  if (session.status === 'rejected') redirect('/login?reason=expired')
+  // The login page re-verifies the cookie itself and, if Xano rejects it
+  // again, clears it through the POST logout handler. No flag is passed.
+  if (session.status === 'rejected') redirect('/login')
   if (session.status === 'unavailable') {
     return (
       <AuthShell title="Your account" intro="We could not confirm your session right now.">
