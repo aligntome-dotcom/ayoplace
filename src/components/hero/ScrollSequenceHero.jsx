@@ -1,3 +1,5 @@
+'use client'
+
 import { useEffect, useRef } from 'react'
 import './ScrollSequenceHero.css'
 
@@ -28,13 +30,19 @@ const KEY_STEP = 8
 // Concurrent decodes: enough to use spare cores, never so many that the
 // main thread starves: one decoder per physical core, assuming two threads
 // per core, so the UI thread and compositor keep a core to themselves.
-const MAX_DECODES = Math.max(2, Math.min(4, Math.floor((navigator.hardwareConcurrency || 4) / 2)))
 // Memory for the full-size window. Decoded 1080p RGBA is ~8 MB per frame.
-const LOW_MEMORY = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 4
-const DECODE_BUDGET_BYTES = (LOW_MEMORY ? 64 : 128) * 1024 * 1024
+//
+// Both depend on `navigator`, which does not exist while this module is
+// evaluated on the server under Next.js, so they are read inside the effect
+// (browser only) rather than at module scope. Values are unchanged.
+function decodeLimits() {
+  const MAX_DECODES = Math.max(2, Math.min(4, Math.floor((navigator.hardwareConcurrency || 4) / 2)))
+  const LOW_MEMORY = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 4
+  const DECODE_BUDGET_BYTES = (LOW_MEMORY ? 64 : 128) * 1024 * 1024
+  return { MAX_DECODES, DECODE_BUDGET_BYTES }
+}
 
-const framePath = (i) =>
-  `${import.meta.env.BASE_URL}frames/frame-${String(i + 1).padStart(3, '0')}.jpg`
+const framePath = (i) => `/frames/frame-${String(i + 1).padStart(3, '0')}.jpg`
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3)
@@ -82,6 +90,7 @@ export default function ScrollSequenceHero() {
   const shadeRef = useRef(null)
 
   useEffect(() => {
+    const { MAX_DECODES, DECODE_BUDGET_BYTES } = decodeLimits()
     const section = sectionRef.current
     const sticky = stickyRef.current
     const canvas = canvasRef.current

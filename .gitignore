@@ -1,5 +1,20 @@
 node_modules
-dist
 .DS_Store
 *.local
+.env
+.env.*
+!.env.example
+
+# Next.js
+.next
+out
+next-env.d.ts
+*.tsbuildinfo
+
+# Playwright
+test-results
+playwright-report
+
+# Previous Vite toolchain
+dist
 .vite

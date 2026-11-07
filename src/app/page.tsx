@@ -1,13 +1,14 @@
-import ScrollSequenceHero from './components/ScrollSequenceHero.jsx'
+import ScrollSequenceHero from '@/components/hero/ScrollSequenceHero.jsx'
 
-export default function App() {
+export default function HomePage() {
   return (
     <main>
       <ScrollSequenceHero />
 
       {/* Placeholder so the page keeps scrolling normally after the sequence.
-          Replace with real sections when the rest of the site is designed. */}
-      <section className="min-h-screen bg-[var(--ayo-paper)] px-6 py-24 sm:px-10">
+          It carries id="book" so the hero's "Book today" link lands here until
+          the account-entry section replaces it in a later phase. */}
+      <section id="book" className="min-h-screen bg-[var(--ayo-paper)] px-6 py-24 sm:px-10">
         <div className="mx-auto max-w-3xl">
           <p className="text-xs font-medium uppercase tracking-[0.3em] text-neutral-500">
             Next section
