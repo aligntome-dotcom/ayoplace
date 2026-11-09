@@ -12,6 +12,16 @@ const TEXT_FADE_END = 0.14
 // which keeps the decoder ahead of the scroll on modest hardware.
 const SCROLL_VH_DESKTOP = 5.5
 const SCROLL_VH_MOBILE = 4
+// Scrub inertia. The drawn frame position chases the scroll position with a
+// time constant of SMOOTH_TAU seconds (frame-rate independent), so a wheel
+// notch becomes a short glide instead of a jump, and it never advances more
+// than MAX_STEP frames per animation frame (still 7x the walkthrough's native
+// 24 fps), so every flick plays at the same, readable top speed. While
+// gliding it also waits, up to STALL_TICKS, for the next frame to be decoded
+// at full size rather than showing a half-size keyframe.
+const SMOOTH_TAU = 0.12
+const MAX_STEP = 3
+const STALL_TICKS = 4
 
 // Frames are 1920x1080 JPEG (~19 MB for the set). JPEG rather than AVIF
 // because decode speed is what limits scrubbing: a 1080p JPEG decodes 2-3x
@@ -36,7 +46,10 @@ const KEY_STEP = 8
 // evaluated on the server under Next.js, so they are read inside the effect
 // (browser only) rather than at module scope. Values are unchanged.
 function decodeLimits() {
-  const MAX_DECODES = Math.max(2, Math.min(4, Math.floor((navigator.hardwareConcurrency || 4) / 2)))
+  // One decoder per logical core but one, capped at 4: the main thread keeps
+  // a core, and the glide is decode-bound on 4-core machines, so the extra
+  // decoder is what keeps the picture sharp while it moves.
+  const MAX_DECODES = Math.max(2, Math.min(4, (navigator.hardwareConcurrency || 4) - 1))
   const LOW_MEMORY = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 4
   const DECODE_BUDGET_BYTES = (LOW_MEMORY ? 64 : 128) * 1024 * 1024
   return { MAX_DECODES, DECODE_BUDGET_BYTES }
@@ -204,18 +217,16 @@ export default function ScrollSequenceHero() {
     const nextJob = () => {
       const t = targetFrame
       // Full-size frames: the current one, then everything ahead in the
-      // scroll direction, then behind. Frames behind have already been shown,
-      // so spending decode time there while moving is wasted.
-      // Ahead, even-numbered frames come first: a frame one step from the
-      // target is drawn as sharp, so every-other-frame coverage looks sharp
-      // while moving at half the decode cost, and the gaps fill in after.
+      // scroll direction in order, then behind. Frames behind have already
+      // been shown, so spending decode time there while moving is wasted.
+      // Ahead is strictly sequential because the glide (see tick) advances
+      // onto the next decoded frame: the nearest frames are the ones needed
+      // first, and the speed cap means the window stays ahead of the picture.
       const wanted = (i) => i >= 0 && i < FRAME_COUNT && blobs[i] && !full[i] && !pendingFull.has(i)
       if (wanted(t)) return { i: t, kind: 'full' }
-      for (const parity of [0, 1]) {
-        for (let d = 1; d <= span; d++) {
-          const i = t + direction * d
-          if (i % 2 === parity && wanted(i)) return { i, kind: 'full' }
-        }
+      for (let d = 1; d <= span; d++) {
+        const i = t + direction * d
+        if (wanted(i)) return { i, kind: 'full' }
       }
       for (let d = 1; d <= span; d++) if (wanted(t - direction * d)) return { i: t - direction * d, kind: 'full' }
       // Then the permanent half-size keyframes.
@@ -330,16 +341,53 @@ export default function ScrollSequenceHero() {
       if (shade) shade.style.opacity = String(1 - e)
     }
 
-    const tick = () => {
+    let lastTime = 0
+    let stalled = 0
+
+    const tick = (now) => {
       rafId = requestAnimationFrame(tick)
       const p = getProgress()
       const target = p * (FRAME_COUNT - 1)
 
-      // Smoothing spreads each mouse-wheel step over several animation frames
-      // so playback advances one frame at a time instead of jumping, and the
-      // decoder sees a steadier demand. Settles within ~250 ms of stopping.
+      // Inertia: chase the scroll position with a fixed time constant so the
+      // glide feels the same at 60 and 120 Hz, capped to MAX_STEP frames per
+      // tick so a flick glides through sharp frames instead of skipping.
+      const dt = lastTime ? Math.min(0.05, (now - lastTime) / 1000) : 1 / 60
+      lastTime = now
       const delta = target - current
-      current = Math.abs(delta) < 0.05 ? target : current + delta * 0.2
+      if (Math.abs(delta) < 0.05) {
+        current = target
+        stalled = 0
+      } else {
+        const k = 1 - Math.exp(-dt / SMOOTH_TAU)
+        let next = current + clamp(delta * k, -MAX_STEP, MAX_STEP)
+        // Glide onto frames that are decoded at full size. If the frame we
+        // would land on is not ready, advance only to the last ready one in
+        // that direction, or hold for up to STALL_TICKS so the decoder (which
+        // works sequentially ahead in the direction of travel) can catch up.
+        // After that the picture follows the scroll regardless, so it can
+        // never fall far behind on slow hardware.
+        const dir = delta > 0 ? 1 : -1
+        const from = Math.round(current)
+        const to = Math.round(next)
+        if (to !== from && !full[to] && stalled < STALL_TICKS) {
+          let ready = from
+          for (let i = from + dir; dir > 0 ? i <= to : i >= to; i += dir) {
+            if (!full[i]) break
+            ready = i
+          }
+          if (ready === from) {
+            stalled++
+            next = current
+          } else {
+            stalled = 0
+            next = ready
+          }
+        } else {
+          stalled = 0
+        }
+        current = next
+      }
 
       applyCopy(p)
       if (bar) bar.style.transform = `scaleX(${p})`
