@@ -17,6 +17,14 @@ const nextConfig: NextConfig = {
           { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
         ],
       },
+      {
+        // Small (960x540) copies of the same frames, downloaded first so the
+        // walkthrough moves before the full-size set has arrived.
+        source: '/frames-sm/:name*',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
+        ],
+      },
     ]
   },
 }

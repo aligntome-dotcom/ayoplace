@@ -22,6 +22,24 @@ const SCROLL_VH_MOBILE = 4
 const SMOOTH_TAU = 0.12
 const MAX_STEP = 3
 const STALL_TICKS = 4
+// When the next frame has not even been downloaded yet (first visit over a
+// slow connection), the glide may wait a little longer for it, then moves on
+// with the best picture available so it never freezes.
+const NET_STALL_TICKS = 18
+// Download scheduling: frames just ahead of the current position in the
+// direction of travel are fetched first, then a few behind, then the rest
+// coarse-to-fine so a far jump still finds a nearby picture.
+const FETCH_AHEAD = 24
+const FETCH_BEHIND = 6
+const FETCH_CONCURRENCY = 8
+// Two copies of every frame are served: the 1920x1080 originals in
+// /frames and 960x540 copies (about a quarter of the bytes) in /frames-sm.
+// The small set streams first so the walkthrough moves within a second or
+// two on a normal connection; the originals follow and sharpen the picture.
+// Small frames are decoded for a window of KEY_SPAN frames around the
+// position, plus every KEY_STEP-th frame permanently.
+const FULL_AHEAD = 12
+const KEY_SPAN = 24
 
 // Frames are 1920x1080 JPEG (~19 MB for the set). JPEG rather than AVIF
 // because decode speed is what limits scrubbing: a 1080p JPEG decodes 2-3x
@@ -56,6 +74,7 @@ function decodeLimits() {
 }
 
 const framePath = (i) => `/frames/frame-${String(i + 1).padStart(3, '0')}.jpg`
+const smallPath = (i) => `/frames-sm/frame-${String(i + 1).padStart(3, '0')}.jpg`
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3)
@@ -113,9 +132,10 @@ export default function ScrollSequenceHero() {
     const ctx = canvas.getContext('2d', { alpha: false })
 
     // ---------- state ----------
-    const blobs = new Array(FRAME_COUNT) // encoded bytes, all frames
+    const blobs = new Array(FRAME_COUNT) // encoded full-size bytes
+    const smalls = new Array(FRAME_COUNT) // encoded small (960x540) bytes
     const full = new Array(FRAME_COUNT) // decoded full size, windowed
-    const keys = new Array(FRAME_COUNT) // decoded half size, every KEY_STEP
+    const keys = new Array(FRAME_COUNT) // decoded small size: windowed, plus every KEY_STEP-th kept
     const pendingFull = new Set()
     const pendingKey = new Set()
     let inflight = 0
@@ -128,13 +148,16 @@ export default function ScrollSequenceHero() {
     let dirty = true
 
     // ---------- fetching ----------
-    const fetchFrame = async (i) => {
+    const pendingFetch = new Set() // keys like 'f12' / 's12'
+    const fetchFailures = new Map()
+    const fetchFrame = async (i, tier = 'full', near = false) => {
       try {
-        const res = await fetch(framePath(i))
+        // Priority hints are honoured by Chromium and ignored elsewhere.
+        const res = await fetch(tier === 'small' ? smallPath(i) : framePath(i), { priority: near ? 'high' : 'low' })
         if (!res.ok) return false
         const blob = await res.blob()
         if (cancelled) return false
-        blobs[i] = blob
+        ;(tier === 'small' ? smalls : blobs)[i] = blob
         return true
       } catch {
         return false
@@ -159,31 +182,87 @@ export default function ScrollSequenceHero() {
       }
     }
 
-    // First frame as soon as possible, then stream the rest in coarse-to-fine
-    // order so early scrubbing shows approximately the right picture.
-    const loadAll = async () => {
-      if (!(await probe()) || cancelled) return
-      pump()
-
+    // First frame as soon as possible, then stream the rest. The download
+    // order is decided per request: frames just ahead of the current position
+    // first (they are the ones about to be shown), a few behind, then the rest
+    // coarse-to-fine so a far jump still shows approximately the right picture.
+    const coarse = []
+    {
       const seen = new Set([0])
-      const order = []
       for (const step of [10, 5, 2, 1]) {
         for (let i = 0; i < FRAME_COUNT; i += step) {
           if (!seen.has(i)) {
             seen.add(i)
-            order.push(i)
+            coarse.push(i)
           }
         }
       }
-      const CONCURRENCY = 6
-      let cursor = 0
+    }
+    const cursors = { small: 0, full: 0 }
+
+    const fetchKey = (tier, i) => `${tier[0]}${i}`
+    const have = (tier, i) => (tier === 'small' ? smalls : blobs)[i]
+    const wantFetch = (tier, i) =>
+      i >= 0 &&
+      i < FRAME_COUNT &&
+      !have(tier, i) &&
+      !pendingFetch.has(fetchKey(tier, i)) &&
+      (fetchFailures.get(fetchKey(tier, i)) || 0) < 3
+
+    const nextFetch = () => {
+      const t = targetFrame
+      // 1. Small frames just ahead: cheapest way to keep the picture moving.
+      for (let d = 0; d <= FETCH_AHEAD; d++) {
+        const i = t + direction * d
+        if (wantFetch('small', i)) return { i, tier: 'small', near: true }
+      }
+      // 2. Full-size frames just ahead: what makes the picture sharp.
+      for (let d = 0; d <= FULL_AHEAD; d++) {
+        const i = t + direction * d
+        if (wantFetch('full', i)) return { i, tier: 'full', near: true }
+      }
+      for (let d = 1; d <= FETCH_BEHIND; d++) {
+        const i = t - direction * d
+        if (wantFetch('small', i)) return { i, tier: 'small', near: true }
+      }
+      // 3. Everything else, small set first, each coarse-to-fine.
+      for (const tier of ['small', 'full']) {
+        while (cursors[tier] < coarse.length) {
+          const i = coarse[cursors[tier]]
+          if (wantFetch(tier, i)) return { i, tier, near: false }
+          if (have(tier, i) || (fetchFailures.get(fetchKey(tier, i)) || 0) >= 3) cursors[tier]++
+          else break // in flight; another worker has it
+        }
+      }
+      for (const tier of ['small', 'full']) {
+        for (let i = 0; i < FRAME_COUNT; i++) if (wantFetch(tier, i)) return { i, tier, near: false }
+      }
+      return null
+    }
+
+    const loadAll = async () => {
+      if (!(await probe()) || cancelled) return
+      pump()
+
       const worker = async () => {
-        while (cursor < order.length && !cancelled) {
-          await fetchFrame(order[cursor++])
+        while (!cancelled) {
+          const job = nextFetch()
+          if (!job) {
+            // Nothing to start right now. If other fetches are still in
+            // flight, wait briefly and look again; otherwise we are done.
+            if (pendingFetch.size === 0) return
+            await new Promise((r) => setTimeout(r, 50))
+            continue
+          }
+          const key = fetchKey(job.tier, job.i)
+          pendingFetch.add(key)
+          const ok = await fetchFrame(job.i, job.tier, job.near)
+          pendingFetch.delete(key)
+          if (!ok) fetchFailures.set(key, (fetchFailures.get(key) || 0) + 1)
           pump()
         }
       }
-      await Promise.all(Array.from({ length: CONCURRENCY }, worker))
+      await Promise.all(Array.from({ length: FETCH_CONCURRENCY }, worker))
     }
 
     // ---------- canvas sizing ----------
@@ -223,15 +302,25 @@ export default function ScrollSequenceHero() {
       // onto the next decoded frame: the nearest frames are the ones needed
       // first, and the speed cap means the window stays ahead of the picture.
       const wanted = (i) => i >= 0 && i < FRAME_COUNT && blobs[i] && !full[i] && !pendingFull.has(i)
+      // Small frames decode in a few milliseconds from the small set (or at
+      // half size from a full blob when only that has arrived).
+      const wantedKey = (i) =>
+        i >= 0 && i < FRAME_COUNT && (smalls[i] || blobs[i]) && !keys[i] && !full[i] && !pendingKey.has(i)
       if (wanted(t)) return { i: t, kind: 'full' }
+      if (wantedKey(t)) return { i: t, kind: 'key' }
       for (let d = 1; d <= span; d++) {
         const i = t + direction * d
         if (wanted(i)) return { i, kind: 'full' }
       }
+      for (let d = 1; d <= KEY_SPAN; d++) {
+        const i = t + direction * d
+        if (wantedKey(i)) return { i, kind: 'key' }
+      }
       for (let d = 1; d <= span; d++) if (wanted(t - direction * d)) return { i: t - direction * d, kind: 'full' }
-      // Then the permanent half-size keyframes.
+      for (let d = 1; d <= FETCH_BEHIND; d++) if (wantedKey(t - direction * d)) return { i: t - direction * d, kind: 'key' }
+      // Then the permanent small keyframes.
       for (let i = 0; i < FRAME_COUNT; i += KEY_STEP) {
-        if (blobs[i] && !keys[i] && !pendingKey.has(i)) return { i, kind: 'key' }
+        if ((smalls[i] || blobs[i]) && !keys[i] && !pendingKey.has(i)) return { i, kind: 'key' }
       }
       return null
     }
@@ -241,7 +330,12 @@ export default function ScrollSequenceHero() {
       pending.add(i)
       inflight++
       try {
-        const bmp = await decodeBlob(blobs[i], kind === 'key' ? keySize : null)
+        const bmp =
+          kind === 'key'
+            ? smalls[i]
+              ? await decodeBlob(smalls[i])
+              : await decodeBlob(blobs[i], keySize)
+            : await decodeBlob(blobs[i])
         if (cancelled) {
           release(bmp)
         } else {
@@ -266,12 +360,18 @@ export default function ScrollSequenceHero() {
       }
     }
 
-    // Free full-size frames that have drifted out of the window.
+    // Free decoded frames that have drifted out of their windows. Every
+    // KEY_STEP-th small frame is kept for the whole session.
     const evict = () => {
       for (let i = 0; i < FRAME_COUNT; i++) {
-        if (full[i] && Math.abs(i - targetFrame) > keep) {
+        const dist = Math.abs(i - targetFrame)
+        if (full[i] && dist > keep) {
           release(full[i])
           full[i] = undefined
+        }
+        if (keys[i] && i % KEY_STEP !== 0 && dist > KEY_SPAN + 4) {
+          release(keys[i])
+          keys[i] = undefined
         }
       }
     }
@@ -284,12 +384,12 @@ export default function ScrollSequenceHero() {
         if (t - d >= 0 && full[t - d]) return [full[t - d], t - d, true]
         if (t + d < FRAME_COUNT && full[t + d]) return [full[t + d], t + d, true]
       }
-      const lo = Math.floor(t / KEY_STEP) * KEY_STEP
-      const hi = lo + KEY_STEP
-      const near = [lo, hi]
-        .filter((k) => k < FRAME_COUNT && keys[k])
-        .sort((a, b) => Math.abs(a - t) - Math.abs(b - t))
-      if (near.length) return [keys[near[0]], near[0], false]
+      // The small copy of this very frame, else the nearest small frame.
+      if (keys[t]) return [keys[t], t, false]
+      for (let d = 1; d <= KEY_STEP; d++) {
+        if (t - d >= 0 && keys[t - d]) return [keys[t - d], t - d, false]
+        if (t + d < FRAME_COUNT && keys[t + d]) return [keys[t + d], t + d, false]
+      }
       for (let d = 1; d < FRAME_COUNT; d++) {
         for (const i of [t - d, t + d]) {
           if (i < 0 || i >= FRAME_COUNT) continue
@@ -370,10 +470,16 @@ export default function ScrollSequenceHero() {
         const dir = delta > 0 ? 1 : -1
         const from = Math.round(current)
         const to = Math.round(next)
-        if (to !== from && !full[to] && stalled < STALL_TICKS) {
+        // A frame is ready to be glided onto when either its full-size or
+        // its small decode exists; the small one keeps the motion continuous
+        // while the originals are still arriving, and the picture sharpens
+        // as soon as the full frame lands.
+        const isReady = (i) => full[i] || keys[i]
+        const budget = blobs[to] || smalls[to] ? STALL_TICKS : NET_STALL_TICKS
+        if (to !== from && !isReady(to) && stalled < budget) {
           let ready = from
           for (let i = from + dir; dir > 0 ? i <= to : i >= to; i += dir) {
-            if (!full[i]) break
+            if (!isReady(i)) break
             ready = i
           }
           if (ready === from) {
