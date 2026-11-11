@@ -1,23 +1,26 @@
 import { test, expect } from '@playwright/test'
 
 // End-to-end checks against the production build WITHOUT a Xano instance
-// (XANO_BASE_URL is unset on purpose; APP_ORIGIN is http://localhost:3000).
+// (XANO_BASE_URL is unset on purpose; APP_ORIGIN is the e2e server's origin).
 // They prove the pages render, the Origin gate and GET/cookie rules hold over
 // real HTTP, and that a missing backend fails safely. Successful login and
 // signup flows are covered by the mocked unit tests in tests/unit/handlers.spec.ts.
+import { E2E_ORIGIN } from '../playwright.config'
 
-const ORIGIN = 'http://localhost:3000'
+const ORIGIN = E2E_ORIGIN
 const JSON_HEADERS = { 'Content-Type': 'application/json' }
 const CREDS = { email: 'jane@example.com', password: 'password123' }
 
 test.describe('auth pages', () => {
-  test('home page keeps the hero and offers customer entry; planner registration is not a form', async ({ request }) => {
+  test('home page keeps the hero and offers customer entry only; no planner card, no form', async ({ request }) => {
     const html = await (await request.get('/')).text()
     expect(html).toContain('ayo-hero')
     expect(html).toContain('id="book"')
     expect(html).toContain('href="/signup"')
     expect(html).toContain('href="/login"')
-    expect(html).toContain('Registration opens soon')
+    // Stage C replaced the Customers / Event planners cards (P4).
+    expect(html).not.toContain('Registration opens soon')
+    expect(html).not.toContain('Event planners')
     expect(html).not.toMatch(/<form/i)
   })
 

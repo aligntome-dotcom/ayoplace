@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import { publishHeroProgress, resetHeroProgress } from './heroProgress'
 import './ScrollSequenceHero.css'
 
 const FRAME_COUNT = 239
@@ -419,11 +420,55 @@ export default function ScrollSequenceHero() {
     let lastCopyBucket = -1
     let rafId = 0
 
+    // The last measured section rect and track length, kept for the progress
+    // publication below so nothing is measured twice per frame.
+    let lastRect = null
+    let lastTotal = 0
+
     const getProgress = () => {
       const rect = section.getBoundingClientRect()
       const total = rect.height - window.innerHeight
+      lastRect = rect
+      lastTotal = total
       if (total <= 0) return 0
       return clamp(-rect.top / total, 0, 1)
+    }
+
+    // ---------- progress publication (for annotations / autoplay) ----------
+    // Publishes the hero's own progress to subscribers (see heroProgress.ts)
+    // only when something changed, so the page at rest costs nothing.
+    let pubFrame = -1
+    let pubP = -1
+    let pubActive = null
+    let pubStart = -1
+    let pubLength = -1
+    const publishIfChanged = (p, t) => {
+      if (!lastRect) return
+      const active = lastRect.bottom > 0 && lastRect.top < window.innerHeight
+      const trackStart = Math.round(window.scrollY + lastRect.top)
+      const trackLength = Math.max(0, Math.round(lastTotal))
+      if (
+        t === pubFrame &&
+        active === pubActive &&
+        trackStart === pubStart &&
+        trackLength === pubLength &&
+        Math.abs(p - pubP) <= 0.0005
+      ) {
+        return
+      }
+      pubFrame = t
+      pubP = p
+      pubActive = active
+      pubStart = trackStart
+      pubLength = trackLength
+      publishHeroProgress({
+        p,
+        shownP: t / (FRAME_COUNT - 1),
+        frame: t + 1,
+        active,
+        trackStart,
+        trackLength,
+      })
     }
 
     // Fade the hero copy and push it away along Z the moment scrolling starts.
@@ -505,6 +550,7 @@ export default function ScrollSequenceHero() {
         evict()
         pump()
       }
+      publishIfChanged(p, t)
       const choice = pick(t)
       if (choice && (choice[1] !== lastDrawn || choice[2] !== lastSharp || dirty)) {
         draw(choice[0], choice[1], choice[2])
@@ -518,6 +564,7 @@ export default function ScrollSequenceHero() {
       cancelled = true
       cancelAnimationFrame(rafId)
       ro.disconnect()
+      resetHeroProgress()
       for (let i = 0; i < FRAME_COUNT; i++) {
         release(full[i])
         release(keys[i])

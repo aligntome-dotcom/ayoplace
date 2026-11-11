@@ -76,7 +76,8 @@
 
 .ayo-hero__title {
   margin: 0;
-  font-family: 'Great Vibes', 'Brush Script MT', 'Segoe Script', cursive;
+  /* Same family as before; now self-hosted through next/font (see layout.tsx). */
+  font-family: var(--font-great-vibes, 'Great Vibes'), 'Brush Script MT', 'Segoe Script', cursive;
   font-weight: 400;
   font-size: clamp(2.5rem, 5.4vw, 4.4rem);
   line-height: 1.12;
@@ -89,7 +90,7 @@
 .ayo-hero__lede {
   margin: 0.9rem auto 0;
   max-width: 30rem;
-  font-family: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  font-family: var(--font-cormorant, 'Cormorant Garamond'), Georgia, 'Times New Roman', serif;
   font-weight: 500;
   font-size: clamp(1rem, 1.3vw, 1.2rem);
   line-height: 1.5;
@@ -108,7 +109,7 @@
   border-radius: 999px;
   background: var(--ayo-ivory);
   color: #141414;
-  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-family: var(--font-cormorant, 'Cormorant Garamond'), Georgia, serif;
   font-size: 0.9rem;
   font-weight: 600;
   letter-spacing: 0.16em;

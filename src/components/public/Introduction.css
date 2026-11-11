@@ -1,0 +1,266 @@
+/*
+ * Stage B — the editorial introduction. Reference sheet: deep-ink field
+ * (#10161A), 120 px side padding desktop / 28 px mobile, min-height 100 svh,
+ * vertical rhythm 24 / 44 / 72, Cormorant Garamond 500 headlines (italic 500
+ * for "AI"), Aboreto eyebrows, Jost body. Gold is decorative only.
+ */
+
+.ayo-intro {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  padding: 96px 120px;
+  color: var(--ayo-ivory, #f4ecdd);
+  background: var(--ayo-deep-ink, #10161a);
+  overflow: hidden;
+}
+
+/* The house lights dim after the hero's last bright frame. */
+.ayo-intro::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 160px;
+  background: linear-gradient(to bottom, #0f0f0f, rgba(16, 22, 26, 0));
+  pointer-events: none;
+}
+
+.ayo-intro__inner {
+  position: relative;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.ayo-intro__eyebrow {
+  color: var(--ayo-gold-brand, #e2b13c);
+}
+
+.ayo-intro__title {
+  margin: 24px 0 0;
+  font-family: var(--ayo-font-headline);
+  font-weight: 500;
+  font-size: clamp(2.25rem, 4vw, 3.5rem);
+  line-height: 1.08;
+  letter-spacing: -0.005em;
+  max-width: 14ch;
+  text-wrap: balance;
+  color: var(--ayo-ivory, #f4ecdd);
+}
+
+.ayo-intro__columns {
+  display: grid;
+  grid-template-columns: 1fr 1px 1fr;
+  column-gap: 72px;
+  align-items: start;
+  margin-top: 72px;
+}
+
+.ayo-intro__column {
+  min-width: 0;
+}
+
+.ayo-intro__label {
+  color: rgba(244, 236, 221, 0.55);
+}
+
+.ayo-intro__name {
+  margin: 24px 0 0;
+  font-family: var(--ayo-font-headline);
+  font-weight: 500;
+  font-size: clamp(2.75rem, 5vw, 4.5rem);
+  line-height: 1.02;
+  letter-spacing: -0.01em;
+  color: var(--ayo-ivory, #f4ecdd);
+}
+
+.ayo-intro__em {
+  font-family: var(--font-cormorant-italic, var(--ayo-font-headline));
+  font-style: italic;
+  font-weight: 500;
+}
+
+.ayo-intro__text {
+  margin: 24px 0 0;
+  max-width: 34ch;
+  color: rgba(244, 236, 221, 0.88);
+}
+
+.ayo-intro__caption {
+  margin: 44px 0 0;
+  font-family: var(--ayo-font-body);
+  font-size: 0.875rem;
+  letter-spacing: 0.02em;
+  color: rgba(244, 236, 221, 0.5);
+}
+
+.ayo-intro__provisional {
+  margin: 24px 0 0;
+  padding: 14px 18px 16px;
+  border: 1px dashed rgba(226, 177, 60, 0.55);
+  border-radius: 4px;
+}
+
+.ayo-intro__provisional-label {
+  font-size: 10px;
+  color: var(--ayo-gold-brand, #e2b13c);
+}
+
+.ayo-intro__provisional-text {
+  margin: 10px 0 0;
+  font-family: var(--ayo-font-body);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: rgba(244, 236, 221, 0.72);
+  max-width: 44ch;
+}
+
+.ayo-intro__divider {
+  display: block;
+  width: 1px;
+  align-self: stretch;
+  background: var(--ayo-gold-brand, #e2b13c);
+  opacity: 0.7;
+  transform-origin: top center;
+}
+
+.ayo-intro__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+  margin-top: 72px;
+}
+
+.ayo-intro__closing {
+  margin: 0;
+  font-family: var(--ayo-font-body);
+  font-size: 0.875rem;
+  letter-spacing: 0.02em;
+  color: rgba(244, 236, 221, 0.5);
+  max-width: 48ch;
+}
+
+.ayo-intro__continue {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 4px;
+  color: rgba(244, 236, 221, 0.78);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 180ms ease;
+}
+
+.ayo-intro__continue:hover {
+  color: var(--ayo-ivory, #f4ecdd);
+}
+
+.ayo-intro__continue:focus-visible {
+  outline: 2px solid var(--ayo-gold-brand, #e2b13c);
+  outline-offset: 3px;
+}
+
+.ayo-intro__arrow {
+  color: var(--ayo-gold-brand, #e2b13c);
+  font-family: var(--ayo-font-body);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+/* ---------- reveal ---------- */
+
+.ayo-intro [data-reveal-item] {
+  opacity: 1;
+  transform: none;
+}
+
+.ayo-intro[data-reveal='pending'] [data-reveal-item] {
+  opacity: 0;
+  transform: translate3d(0, 16px, 0);
+}
+
+.ayo-intro[data-reveal='pending'] .ayo-intro__divider {
+  transform: scaleY(0);
+}
+
+.ayo-intro[data-reveal='done'] [data-reveal-item] {
+  transition:
+    opacity 700ms cubic-bezier(0.2, 0.6, 0.2, 1) calc(var(--i, 0) * 110ms),
+    transform 700ms cubic-bezier(0.2, 0.6, 0.2, 1) calc(var(--i, 0) * 110ms);
+}
+
+.ayo-intro[data-reveal='done'] .ayo-intro__divider {
+  transition: transform 900ms cubic-bezier(0.2, 0.6, 0.2, 1) 220ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ayo-intro [data-reveal-item],
+  .ayo-intro .ayo-intro__divider {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}
+
+/* ---------- tablet ---------- */
+@media (max-width: 1023px) {
+  .ayo-intro {
+    padding: 80px 64px;
+  }
+  .ayo-intro__columns {
+    column-gap: 44px;
+  }
+}
+
+/* ---------- mobile: statements stack, the divider turns horizontal ---------- */
+@media (max-width: 767px) {
+  .ayo-intro {
+    padding: 72px 28px;
+  }
+  .ayo-intro__inner {
+    padding: 0 0;
+  }
+  .ayo-intro__title {
+    margin-top: 20px;
+    font-size: clamp(1.875rem, 8vw, 2.5rem);
+  }
+  .ayo-intro__columns {
+    grid-template-columns: 1fr;
+    row-gap: 44px;
+    margin-top: 44px;
+  }
+  .ayo-intro__name {
+    margin-top: 20px;
+    font-size: clamp(2.25rem, 10vw, 3rem);
+  }
+  .ayo-intro__text,
+  .ayo-intro__provisional {
+    margin-top: 20px;
+  }
+  .ayo-intro__caption {
+    margin-top: 24px;
+  }
+  .ayo-intro__divider {
+    width: 100%;
+    height: 1px;
+    align-self: auto;
+    transform-origin: left center;
+  }
+  .ayo-intro[data-reveal='pending'] .ayo-intro__divider {
+    transform: scaleX(0);
+  }
+  .ayo-intro__footer {
+    flex-direction: column;
+    align-items: flex-start;
+    margin-top: 44px;
+  }
+  /* Keep the provisional label on one line at phone widths, as in the design's mobile page. */
+  .ayo-intro__provisional-label {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+  }
+}

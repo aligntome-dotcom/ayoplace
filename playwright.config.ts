@@ -2,6 +2,9 @@ import { defineConfig } from '@playwright/test'
 
 // Runs against the production build: `npm run build` first, then `npm test`.
 // Uses the Chrome already installed on the machine (no browser download).
+export const E2E_PORT = 3100
+export const E2E_ORIGIN = `http://localhost:${E2E_PORT}`
+
 export default defineConfig({
   testDir: './tests',
   testIgnore: ['**/unit/**'], // node-only unit tests run via playwright.unit.config.ts
@@ -11,20 +14,23 @@ export default defineConfig({
   workers: 1,
   reporter: [['list']],
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: E2E_ORIGIN,
     channel: 'chrome',
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: 'npm run start',
-    url: 'http://localhost:3000',
-    reuseExistingServer: true,
+    // The e2e suite runs its own production server on a dedicated port so it
+    // never collides with, or kills, the owner's dev server on 3000.
+    command: `npm run start -- -p ${E2E_PORT}`,
+    url: E2E_ORIGIN,
+    // Never attach to whatever happens to be listening; fail fast instead.
+    reuseExistingServer: false,
     timeout: 60_000,
     // APP_ORIGIN lets the Origin checks pass for same-origin requests.
     // XANO_BASE_URL is deliberately NOT set: no instance exists, so the e2e
     // suite proves the handlers fail safely without a backend. Live Xano
     // flows are unit-tested with a mocked transport instead.
-    env: { APP_ORIGIN: 'http://localhost:3000' },
+    env: { APP_ORIGIN: E2E_ORIGIN },
   },
   projects: [
     { name: 'desktop', use: { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 } },

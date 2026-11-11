@@ -1,0 +1,181 @@
+/*
+ * Hero annotation layer (Phase P2). Values from the design's reference sheet:
+ * blocks span 4 of 12 columns (432 px at 1440) with 48 px margins and 24 px
+ * gutters; padding 20/24; eyebrow → rule → headline → support gaps of 12 px;
+ * gold rule 32 × 1 (28 × 1 mobile); light blocks on the off-white scrim with
+ * ink/slate text, the dark block ivory with a soft shadow and no scrim;
+ * mobile: one full-width block 12 svh above the bottom edge.
+ *
+ * Grid positions expressed as viewport fractions of the 1440 layout:
+ * column 2 starts at 162 px (11.25 %), column 5 at 504 px (35 %),
+ * column 8 at 846 px (58.75 %), column 9 at 960 px (66.67 %),
+ * right margin 48 px (3.33 %).
+ */
+
+.ayo-notes {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  overflow: hidden;
+  /* Visibility and transform are set from JS. */
+  will-change: transform;
+}
+
+.ayo-note {
+  position: absolute;
+  width: clamp(280px, 30vw, 432px);
+  padding: 20px 24px;
+  border-radius: 6px;
+  color: var(--ayo-ink, #0f0f0f);
+  background: var(--ayo-scrim, linear-gradient(rgba(250, 249, 249, 0.78), rgba(250, 249, 249, 0.62)));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  /* Opacity and visibility are set per frame from JS; no transitions. */
+  will-change: opacity;
+}
+
+.ayo-note > * {
+  margin: 0;
+  will-change: transform, opacity;
+}
+
+.ayo-note__eyebrow {
+  color: var(--ayo-slate, #2c393f);
+}
+
+.ayo-note__rule {
+  margin-top: 12px;
+  background: var(--ayo-gold-brand, #e2b13c);
+}
+
+.ayo-note__heading {
+  margin-top: 12px;
+  color: var(--ayo-ink, #0f0f0f);
+  /* The copy rule (≤ 5 words) keeps headlines short; the block width, not a
+     character cap, decides wrapping, so "Set for the day itself." sits on one
+     line as in the design and longer lines balance over two. */
+}
+
+.ayo-note__text {
+  margin-top: 12px;
+  color: var(--ayo-slate, #2c393f);
+  max-width: 34ch;
+}
+
+/* The one ivory block (A5): no scrim, soft shadow on the type. */
+.ayo-note--dark {
+  background: none;
+  box-shadow: none;
+  color: var(--ayo-ivory, #f4ecdd);
+}
+.ayo-note--dark .ayo-note__eyebrow {
+  color: var(--ayo-gold-brand, #e2b13c);
+}
+.ayo-note--dark .ayo-note__heading,
+.ayo-note--dark .ayo-note__text {
+  color: var(--ayo-ivory, #f4ecdd);
+  text-shadow: var(--ayo-text-shadow-dark, 0 1px 14px rgba(0, 0, 0, 0.45));
+}
+
+/* A1: a quieter caption while the hero copy departs. */
+.ayo-note--caption {
+  width: clamp(240px, 22vw, 300px);
+  padding: 14px 18px;
+}
+.ayo-note--caption .ayo-note__heading {
+  font-size: clamp(1.25rem, 1.5vw, 1.5rem);
+}
+.ayo-note--caption .ayo-note__rule,
+.ayo-note--caption .ayo-note__heading,
+.ayo-note--caption .ayo-note__text {
+  margin-top: 8px;
+}
+
+/* ---------- desktop and tablet positions (≥ 768 px) ---------- */
+
+.ayo-note--top-right-caption {
+  right: 3.33%;
+  top: 12%;
+}
+
+.ayo-note--right-centre {
+  left: 58.75%;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.ayo-note--left-lower-middle {
+  left: 11.25%;
+  top: 58%;
+  transform: translateY(-50%);
+}
+
+.ayo-note--upper-right {
+  left: 58.75%;
+  top: 14%;
+}
+
+.ayo-note--lower-left {
+  left: 11.25%;
+  bottom: 16%;
+}
+
+.ayo-note--lower-centre {
+  left: 50%;
+  bottom: 14%;
+  transform: translateX(-50%);
+}
+
+/* Tablet (768–1023): the grid fractions stay, blocks keep a readable
+   minimum width, and right-anchored blocks are pinned by the right margin
+   so they can never leave the viewport. */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .ayo-note {
+    width: clamp(280px, 38vw, 400px);
+  }
+  .ayo-note--right-centre,
+  .ayo-note--upper-right {
+    left: auto;
+    right: 6%;
+  }
+}
+
+/* ---------- mobile (< 768 px): one bottom-anchored block ---------- */
+@media (max-width: 767px) {
+  .ayo-note,
+  .ayo-note--right-centre,
+  .ayo-note--left-lower-middle,
+  .ayo-note--upper-right,
+  .ayo-note--lower-left,
+  .ayo-note--lower-centre {
+    left: 24px;
+    right: 24px;
+    top: auto;
+    width: auto;
+    /* 12 svh above the viewport edge; the hero's 2 px progress bar sits at
+       the very bottom, so the block stays well clear of it. */
+    bottom: 12svh;
+    transform: none;
+    padding: 18px 20px;
+  }
+  .ayo-note__rule {
+    width: 28px;
+  }
+  .ayo-note--desktop-only {
+    display: none;
+  }
+}
+
+/* Visually hidden, available to assistive technology. */
+.ayo-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

@@ -1,0 +1,99 @@
+/*
+ * Public-experience design foundation (Phase P1).
+ *
+ * Everything here is scoped to `.ayo-public`, which the home page puts on
+ * its <main>. Nothing outside that scope (sign-in, sign-up, account) changes.
+ * The hero keeps its own tokens inside `.ayo-hero` (`--ayo-gold: #d8b98a` for
+ * its progress bar, `--ayo-ivory`, `--ayo-ivory-soft`); those are not
+ * redefined here. The approved new gold is therefore `--ayo-gold-brand`, so
+ * the two never collide.
+ *
+ * Font variables (`--font-great-vibes`, `--font-cormorant`, `--font-aboreto`,
+ * `--font-jost`) come from next/font in src/app/layout.tsx.
+ */
+
+.ayo-public {
+  /* Approved palette (reference sheet, page 4 of the design). */
+  --ayo-slate: #2c393f;
+  --ayo-gold-brand: #e2b13c;
+  --ayo-green: #59894e;
+  --ayo-plum: #5d3f6a;
+  --ayo-offwhite: #faf9f9;
+  --ayo-deep-ink: #10161a;
+  /* Same value the hero uses for its own text; declared here so the public
+     sections on ink can use it outside the hero. */
+  --ayo-ivory: #f4ecdd;
+
+  /* Annotation scrim and dark-frame text shadow, from the reference sheet. */
+  --ayo-scrim: linear-gradient(rgba(250, 249, 249, 0.78), rgba(250, 249, 249, 0.62));
+  --ayo-text-shadow-dark: 0 1px 14px rgba(0, 0, 0, 0.45);
+
+  /* Role-based font stacks. */
+  --ayo-font-display: var(--font-great-vibes, 'Great Vibes'), 'Brush Script MT', 'Segoe Script', cursive;
+  --ayo-font-headline: var(--font-cormorant, 'Cormorant Garamond'), Georgia, 'Times New Roman', serif;
+  --ayo-font-eyebrow: var(--font-aboreto, 'Aboreto'), 'Trebuchet MS', 'Segoe UI', sans-serif;
+  --ayo-font-body: var(--font-jost, 'Jost'), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Type roles. Sizes, weights, line heights and tracking are the reference
+   sheet's; they are classes rather than element defaults so nothing changes
+   until a component asks for them. */
+
+.ayo-public .ayo-eyebrow {
+  font-family: var(--ayo-font-eyebrow);
+  font-weight: 400;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.ayo-public .ayo-headline {
+  font-family: var(--ayo-font-headline);
+  font-weight: 500;
+  font-size: clamp(2rem, 2.6vw, 2.75rem);
+  line-height: 1.08;
+  letter-spacing: -0.005em;
+  text-wrap: balance;
+}
+
+.ayo-public .ayo-body {
+  font-family: var(--ayo-font-body);
+  font-weight: 400;
+  font-size: clamp(0.9375rem, 1.05vw, 1.0625rem);
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.ayo-public .ayo-button-label {
+  font-family: var(--ayo-font-body);
+  font-weight: 500;
+  font-size: 0.875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.ayo-public .ayo-rule {
+  display: block;
+  width: 32px;
+  height: 1px;
+  background: var(--ayo-gold-brand);
+  transform-origin: left center;
+}
+
+@media (max-width: 767px) {
+  .ayo-public .ayo-eyebrow {
+    font-size: 10px;
+  }
+  .ayo-public .ayo-headline {
+    font-size: clamp(1.5rem, 6.4vw, 1.875rem);
+    line-height: 1.12;
+  }
+  .ayo-public .ayo-body {
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  .ayo-public .ayo-rule {
+    width: 28px;
+  }
+}

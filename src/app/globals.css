@@ -1,4 +1,22 @@
 @import "tailwindcss";
+@import "../styles/public-experience.css";
+
+/* Approved public-experience palette and type roles as Tailwind theme
+   tokens (utilities such as bg-ayo-offwhite, text-ayo-slate, font-eyebrow).
+   Literal values only; generating utilities adds no CSS until one is used. */
+@theme inline {
+  --color-ayo-ink: #0f0f0f;
+  --color-ayo-deep-ink: #10161a;
+  --color-ayo-slate: #2c393f;
+  --color-ayo-gold: #e2b13c;
+  --color-ayo-green: #59894e;
+  --color-ayo-plum: #5d3f6a;
+  --color-ayo-offwhite: #faf9f9;
+  --color-ayo-ivory: #f4ecdd;
+  --font-eyebrow: var(--font-aboreto), 'Trebuchet MS', sans-serif;
+  --font-headline: var(--font-cormorant), Georgia, serif;
+  --font-body-public: var(--font-jost), ui-sans-serif, system-ui, sans-serif;
+}
 
 :root {
   --ayo-ink: #0f0f0f;

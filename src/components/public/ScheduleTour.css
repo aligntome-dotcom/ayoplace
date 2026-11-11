@@ -1,0 +1,284 @@
+/*
+ * Stage C — Schedule a Tour. Reference sheet: off-white field (#FAF9F9),
+ * ink headline and primary button, slate supporting text, gold rule and
+ * focus ring, 120 px side padding desktop / 28 px mobile, min-height
+ * 100 svh, rhythm 24 / 44 / 72. Primary button Jost 500 13–14 px uppercase
+ * 0.14 em; full width and 56 px tall on mobile. Text link: gold underline,
+ * ink on hover, same gold focus ring. Touch targets ≥ 44 px.
+ */
+
+.ayo-tour {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  padding: 96px 120px;
+  color: var(--ayo-ink, #0f0f0f);
+  background: var(--ayo-offwhite, #faf9f9);
+  overflow: hidden;
+}
+
+/* The lights come back up: a soft grey-to-off-white wash at the top. */
+.ayo-tour::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 180px;
+  background: linear-gradient(to bottom, #e9e8e6, rgba(250, 249, 249, 0));
+  pointer-events: none;
+}
+
+.ayo-tour__inner {
+  position: relative;
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.ayo-tour__eyebrow {
+  color: var(--ayo-slate, #2c393f);
+}
+
+.ayo-tour__rule {
+  display: block;
+  width: 32px;
+  height: 1px;
+  margin: 12px auto 0;
+  background: var(--ayo-gold-brand, #e2b13c);
+}
+
+.ayo-tour__title {
+  margin: 24px auto 0;
+  font-family: var(--ayo-font-headline);
+  font-weight: 500;
+  font-size: clamp(2.5rem, 5vw, 4.25rem);
+  line-height: 1.06;
+  letter-spacing: -0.005em;
+  max-width: 14ch;
+  text-wrap: balance;
+  color: var(--ayo-ink, #0f0f0f);
+}
+
+.ayo-tour__lede {
+  margin: 24px auto 0;
+  max-width: 56ch;
+  color: var(--ayo-slate, #2c393f);
+}
+
+.ayo-tour__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 24px 32px;
+  margin-top: 44px;
+}
+
+.ayo-tour__primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  padding: 0 40px;
+  background: var(--ayo-ink, #0f0f0f);
+  color: var(--ayo-offwhite, #faf9f9);
+  text-decoration: none;
+  transition: background-color 180ms ease;
+}
+
+.ayo-tour__primary:hover {
+  background: var(--ayo-slate, #2c393f);
+}
+
+.ayo-tour__primary:focus-visible,
+.ayo-tour__link:focus-visible,
+.ayo-tour__phone:focus-visible {
+  outline: 2px solid var(--ayo-gold-brand, #e2b13c);
+  outline-offset: 3px;
+}
+
+.ayo-tour__secondary {
+  margin: 0;
+  font-family: var(--ayo-font-body);
+  font-size: 1rem;
+  color: var(--ayo-slate, #2c393f);
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  /* Flex drops the whitespace between the prompt and the link; restore it. */
+  gap: 0.35em;
+}
+
+.ayo-tour__link {
+  color: var(--ayo-ink, #0f0f0f);
+  text-decoration: underline;
+  text-decoration-color: var(--ayo-gold-brand, #e2b13c);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 5px;
+  transition: text-decoration-color 180ms ease;
+}
+
+.ayo-tour__link:hover {
+  text-decoration-color: var(--ayo-ink, #0f0f0f);
+}
+
+.ayo-tour__caption {
+  margin: 20px auto 0;
+  font-family: var(--ayo-font-body);
+  font-size: 0.8125rem;
+  letter-spacing: 0.01em;
+  color: rgba(44, 57, 63, 0.7);
+}
+
+.ayo-tour__steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 44px;
+  margin: 72px 0 0;
+  padding: 44px 0 0;
+  list-style: none;
+  border-top: 1px solid rgba(44, 57, 63, 0.15);
+  counter-reset: none;
+}
+
+.ayo-tour__step {
+  min-width: 0;
+}
+
+.ayo-tour__step-number {
+  display: block;
+  font-size: 10px;
+  color: var(--ayo-gold-brand, #e2b13c);
+}
+
+.ayo-tour__step-title {
+  margin: 12px 0 0;
+  font-family: var(--ayo-font-headline);
+  font-weight: 500;
+  font-size: 1.5rem;
+  line-height: 1.15;
+  color: var(--ayo-ink, #0f0f0f);
+}
+
+.ayo-tour__step-text {
+  margin: 10px auto 0;
+  max-width: 30ch;
+  font-family: var(--ayo-font-body);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  color: var(--ayo-slate, #2c393f);
+}
+
+.ayo-tour__contact {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0 10px;
+  margin: 72px 0 0;
+  font-family: var(--ayo-font-body);
+  font-size: 0.8125rem;
+  letter-spacing: 0.02em;
+  color: rgba(44, 57, 63, 0.75);
+}
+
+.ayo-tour__phone {
+  color: inherit;
+  text-decoration: none;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  margin: -14px 0;
+}
+
+.ayo-tour__phone:hover {
+  color: var(--ayo-ink, #0f0f0f);
+}
+
+/* ---------- reveal (same mechanism as Stage B) ---------- */
+
+.ayo-tour [data-reveal-item] {
+  opacity: 1;
+  transform: none;
+}
+
+.ayo-tour[data-reveal='pending'] [data-reveal-item] {
+  opacity: 0;
+  transform: translate3d(0, 16px, 0);
+}
+
+.ayo-tour[data-reveal='done'] [data-reveal-item] {
+  transition:
+    opacity 700ms cubic-bezier(0.2, 0.6, 0.2, 1) calc(var(--i, 0) * 110ms),
+    transform 700ms cubic-bezier(0.2, 0.6, 0.2, 1) calc(var(--i, 0) * 110ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ayo-tour [data-reveal-item] {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .ayo-tour__primary,
+  .ayo-tour__link {
+    transition: none;
+  }
+}
+
+/* ---------- tablet ---------- */
+@media (max-width: 1023px) {
+  .ayo-tour {
+    padding: 80px 64px;
+  }
+  .ayo-tour__steps {
+    gap: 32px;
+  }
+}
+
+/* ---------- mobile ---------- */
+@media (max-width: 767px) {
+  .ayo-tour {
+    padding: 72px 28px;
+  }
+  .ayo-tour__title {
+    margin-top: 20px;
+    font-size: clamp(2rem, 9vw, 2.5rem);
+  }
+  .ayo-tour__lede {
+    margin-top: 20px;
+    text-align: center;
+  }
+  .ayo-tour__actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    margin-top: 32px;
+  }
+  .ayo-tour__primary {
+    width: 100%;
+    min-height: 56px;
+  }
+  .ayo-tour__secondary {
+    justify-content: center;
+  }
+  .ayo-tour__steps {
+    grid-template-columns: 1fr;
+    gap: 28px;
+    margin-top: 44px;
+    padding-top: 32px;
+    text-align: left;
+  }
+  .ayo-tour__step-text {
+    margin-left: 0;
+  }
+  .ayo-tour__contact {
+    margin-top: 44px;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+  }
+  .ayo-tour__dot {
+    display: none;
+  }
+}

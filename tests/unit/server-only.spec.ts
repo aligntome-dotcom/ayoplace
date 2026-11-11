@@ -27,7 +27,8 @@ test.describe('server-only boundary', () => {
     const files = serverModules()
     expect(files.length).toBeGreaterThanOrEqual(5)
     for (const file of files) {
-      const firstStatement = readFileSync(file, 'utf8').trimStart().split('\n')[0]
+      // Tolerate CRLF working copies (core.autocrlf on Windows); the check itself is unchanged.
+      const firstStatement = readFileSync(file, 'utf8').trimStart().split(/\r?\n/)[0]
       expect(firstStatement, relative(ROOT, file)).toBe("import 'server-only'")
     }
   })
